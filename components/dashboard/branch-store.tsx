@@ -15,7 +15,7 @@ type BranchInput = {
 type BranchStore = {
   branches: Branch[];
   addBranch: (branch: BranchInput) => void;
-  updateBranch: (id: string, patch: Partial<BranchInput>) => void;
+  updateBranch: (id: string, patch: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
 };
 

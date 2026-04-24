@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Upload } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useBranchStore } from "@/components/dashboard/branch-store";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { HAZARD_LABELS, calculateCompositeRisk } from "@/lib/risk";
@@ -19,8 +21,10 @@ function cellColor(value: number) {
 }
 
 export default function HazardMatrixPage() {
-  const { branches } = useBranchStore();
+  const { branches, updateBranch } = useBranchStore();
   const [selectedId, setSelectedId] = useState(branches[0]?.id ?? "");
+  const [importMessage, setImportMessage] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedBranch = branches.find((branch) => branch.id === selectedId) ?? branches[0];
 
   const branchHazardData = selectedBranch
@@ -30,6 +34,69 @@ export default function HazardMatrixPage() {
       }))
     : [];
 
+  const parseCsv = (csv: string) => {
+    const rows = csv
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (rows.length < 2) return [];
+
+    const headers = rows[0].split(",").map((h) => h.trim().toLowerCase());
+    const idIdx = headers.indexOf("id");
+    const nameIdx = headers.indexOf("name");
+    const floodIdx = headers.indexOf("flood");
+    const heatIdx = headers.indexOf("heatwave");
+    const droughtIdx = headers.indexOf("drought");
+    const urbanIdx = headers.indexOf("urban_flood");
+    const rainIdx = headers.indexOf("extreme_rain");
+
+    return rows.slice(1).map((row) => {
+      const cols = row.split(",").map((c) => c.trim());
+      return {
+        id: idIdx >= 0 ? cols[idIdx] : "",
+        name: nameIdx >= 0 ? cols[nameIdx] : "",
+        hazards: {
+          flood: Number(cols[floodIdx]),
+          heatwave: Number(cols[heatIdx]),
+          drought: Number(cols[droughtIdx]),
+          urban_flood: Number(cols[urbanIdx]),
+          extreme_rain: Number(cols[rainIdx]),
+        },
+      };
+    });
+  };
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const content = await file.text();
+    const parsed = parseCsv(content);
+
+    let updated = 0;
+    parsed.forEach((item) => {
+      const target = branches.find(
+        (branch) =>
+          (item.id && branch.id.toLowerCase() === item.id.toLowerCase()) ||
+          (item.name && branch.name.toLowerCase() === item.name.toLowerCase()),
+      );
+      if (!target) return;
+      if (Object.values(item.hazards).some((v) => Number.isNaN(v))) return;
+      updateBranch(target.id, {
+        hazards: {
+          flood: Math.max(0, Math.min(100, item.hazards.flood)),
+          heatwave: Math.max(0, Math.min(100, item.hazards.heatwave)),
+          drought: Math.max(0, Math.min(100, item.hazards.drought)),
+          urban_flood: Math.max(0, Math.min(100, item.hazards.urban_flood)),
+          extreme_rain: Math.max(0, Math.min(100, item.hazards.extreme_rain)),
+        },
+      });
+      updated += 1;
+    });
+
+    setImportMessage(updated ? `Imported hazard values for ${updated} branch(es).` : "No matching rows found in CSV.");
+    event.target.value = "";
+  };
+
   return (
     <div className="fade-in-up space-y-4">
       <header>
@@ -37,10 +104,28 @@ export default function HazardMatrixPage() {
         <h2 className="section-title">Hazard x Asset Matrix</h2>
       </header>
       <Card className="hover-lift">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
           <CardTitle>Hazard x Asset Matrix (Yearly)</CardTitle>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleImport}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="mr-2 size-4" />
+              Import CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
+          {importMessage ? <p className="mb-3 text-sm text-muted-foreground">{importMessage}</p> : null}
           <div className="max-h-[520px] overflow-auto rounded-xl border border-white/20 dark:border-white/10">
           <table className="min-w-full text-sm">
             <thead>
