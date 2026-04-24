@@ -12,6 +12,7 @@ const links = [
   { href: "/risk-analysis", label: "Risk Change Analysis" },
   { href: "/hazard-matrix", label: "Hazard Matrix" },
   { href: "/var-analysis", label: "Physical VaR" },
+  { href: "/scenario-strategy", label: "Scenario & Strategy" },
 ];
 
 export function AppSidebar() {
