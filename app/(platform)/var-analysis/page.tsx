@@ -39,18 +39,22 @@ export default function VarAnalysisPage() {
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">Portfolio total VaR: <span className="font-semibold text-foreground">{toCompactCurrency(totalVaR)}</span></p>
           {showTable ? (
-            <Table>
-              <TableHeader><TableRow><TableHead>Branch</TableHead><TableHead>VaR</TableHead><TableHead>% Contribution</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {varData.map((row) => (
-                  <TableRow key={row.name}>
-                    <TableCell>{row.name}</TableCell>
-                    <TableCell>{toCompactCurrency(row.var)}</TableCell>
-                    <TableCell>{((row.var / totalVaR) * 100).toFixed(2)}%</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="max-h-[420px] overflow-auto rounded-xl border border-white/20 dark:border-white/10">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+                  <TableRow><TableHead>Branch</TableHead><TableHead>VaR</TableHead><TableHead>% Contribution</TableHead></TableRow>
+                </TableHeader>
+                <TableBody>
+                  {varData.map((row) => (
+                    <TableRow key={row.name}>
+                      <TableCell>{row.name}</TableCell>
+                      <TableCell>{toCompactCurrency(row.var)}</TableCell>
+                      <TableCell>{((row.var / totalVaR) * 100).toFixed(2)}%</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
