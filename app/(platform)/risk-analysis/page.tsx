@@ -4,8 +4,10 @@ import { useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useBranchStore } from "@/components/dashboard/branch-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { average, buildRiskTrajectory } from "@/lib/risk";
+
+const toMax3Decimals = (value: number) => Number(value.toFixed(3)).toString();
 
 export default function RiskAnalysisPage() {
   const { branches } = useBranchStore();
@@ -44,7 +46,7 @@ export default function RiskAnalysisPage() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trajectory}>
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.25)" />
-              <XAxis dataKey="year" stroke="rgba(148,163,184,0.85)" /><YAxis stroke="rgba(148,163,184,0.85)" /><Tooltip contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }} />
+              <XAxis dataKey="year" stroke="rgba(148,163,184,0.85)" /><YAxis stroke="rgba(148,163,184,0.85)" /><Tooltip formatter={(value) => toMax3Decimals(Number(value ?? 0))} contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }} />
               <Line dataKey="portfolio" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -57,7 +59,7 @@ export default function RiskAnalysisPage() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={scenarioData}>
               <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.25)" />
-              <XAxis dataKey="year" stroke="rgba(148,163,184,0.85)" /><YAxis stroke="rgba(148,163,184,0.85)" /><Tooltip contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }} />
+              <XAxis dataKey="year" stroke="rgba(148,163,184,0.85)" /><YAxis stroke="rgba(148,163,184,0.85)" /><Tooltip formatter={(value) => toMax3Decimals(Number(value ?? 0))} contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }} />
               <Line dataKey="low" stroke="#22c55e" />
               <Line dataKey="medium" stroke="#f59e0b" />
               <Line dataKey="high" stroke="#ef4444" />
@@ -71,7 +73,7 @@ export default function RiskAnalysisPage() {
         <CardContent className="space-y-4">
           <Select value={selectedBranch?.id ?? ""} onValueChange={(value) => setSelectedId(value ?? "")}>
             <SelectTrigger className="w-full md:w-[460px]">
-              <SelectValue placeholder="Select branch" />
+              <span className="truncate text-left">{selectedBranch?.name ?? "Select branch"}</span>
             </SelectTrigger>
             <SelectContent className="w-full md:w-[460px]">
               {branches.map((branch) => (
@@ -85,13 +87,13 @@ export default function RiskAnalysisPage() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={branchData}>
                 <CartesianGrid strokeDasharray="4 4" stroke="rgba(148,163,184,0.25)" />
-                <XAxis dataKey="year" stroke="rgba(148,163,184,0.85)" /><YAxis stroke="rgba(148,163,184,0.85)" /><Tooltip contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }} />
+                <XAxis dataKey="year" stroke="rgba(148,163,184,0.85)" /><YAxis stroke="rgba(148,163,184,0.85)" /><Tooltip formatter={(value) => toMax3Decimals(Number(value ?? 0))} contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }} />
                 <Line dataKey="risk" stroke="#22d3ee" strokeWidth={3} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
           <p className="text-sm text-muted-foreground">
-            Long-term change from baseline: <span className="font-semibold text-foreground">{percentChange.toFixed(1)}%</span>
+            Long-term change from baseline: <span className="font-semibold text-foreground">{percentChange.toFixed(2)}%</span>
           </p>
         </CardContent>
       </Card>

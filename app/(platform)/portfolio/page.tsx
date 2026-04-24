@@ -1,24 +1,39 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { Download, Pencil, Trash2 } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useBranchStore } from "@/components/dashboard/branch-store";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { downloadCsv } from "@/lib/csv";
-import { toCompactCurrency } from "@/lib/risk";
+import { HAZARD_LABELS, calculateCompositeRisk, calculateVaR, getRiskCategory, toCompactCurrency, toCurrency } from "@/lib/risk";
 
-export default function PortfolioPage() {
+function PortfolioPageContent() {
   const { branches, addBranch, updateBranch, deleteBranch } = useBranchStore();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [cityFilter, setCityFilter] = useState("all");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(searchParams.get("branch"));
   const [form, setForm] = useState({ name: "", city: "Lahore", lat: "", lng: "", asset_value: "" });
 
   const cities = useMemo(() => ["all", ...new Set(branches.map((branch) => branch.city))], [branches]);
+  const selectedBranchFromMap = branches.find((branch) => branch.id === selectedBranchId);
+  const selectedAssetVaR = selectedBranchFromMap
+    ? calculateVaR(selectedBranchFromMap.asset_value, selectedBranchFromMap.risk_scores.long_term)
+    : 0;
+  const portfolioTotalVaR = branches.reduce(
+    (acc, branch) => acc + calculateVaR(branch.asset_value, branch.risk_scores.long_term),
+    0,
+  );
+  const listViewportHeight = selectedBranchFromMap ? "max-h-[360px]" : "max-h-[560px]";
   const filtered = branches.filter(
     (branch) =>
       branch.name.toLowerCase().includes(query.toLowerCase()) &&
@@ -46,6 +61,13 @@ export default function PortfolioPage() {
     setForm({ name: "", city: "Lahore", lat: "", lng: "", asset_value: "" });
   };
 
+  const openDetails = (branchId: string) => {
+    setSelectedBranchId(branchId);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("branch", branchId);
+    router.replace(`${pathname}?${params.toString()}`);
+  };
+
   return (
     <div className="fade-in-up space-y-4">
       <header>
@@ -53,30 +75,118 @@ export default function PortfolioPage() {
         <h2 className="section-title">Asset Portfolio Manager</h2>
       </header>
       <div className="grid items-start gap-4 xl:grid-cols-4">
-      <Card className="hover-lift xl:col-span-3">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Asset Portfolio Manager</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              downloadCsv("portfolio.csv", [
-                ["ID", "Name", "City", "Latitude", "Longitude", "Asset Value"],
-                ...filtered.map((branch) => [
-                  branch.id,
-                  branch.name,
-                  branch.city,
-                  String(branch.lat),
-                  String(branch.lng),
-                  String(branch.asset_value),
-                ]),
-              ])
-            }
-          >
-            <Download className="mr-2 size-4" /> Export CSV
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="space-y-4 xl:col-span-3">
+        {selectedBranchFromMap ? (
+          <Card className="hover-lift">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Selected Asset Intelligence</CardTitle>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setSelectedBranchId(null);
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.delete("branch");
+                  router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+                }}
+              >
+                Clear
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4 rounded-2xl border border-blue-400/30 bg-blue-500/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-semibold">{selectedBranchFromMap.name}</h3>
+                  <p className="text-sm text-muted-foreground">{selectedBranchFromMap.city} · Branch ID: {selectedBranchFromMap.id}</p>
+                </div>
+                <Badge className="bg-blue-500/20 text-blue-200">
+                  {getRiskCategory(calculateCompositeRisk(selectedBranchFromMap))} Risk
+                </Badge>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs text-muted-foreground">Asset Value</p>
+                  <p className="font-semibold">{toCurrency(selectedBranchFromMap.asset_value)}</p>
+                </div>
+                <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs text-muted-foreground">Composite Risk</p>
+                  <p className="font-semibold">{calculateCompositeRisk(selectedBranchFromMap).toFixed(2)}</p>
+                </div>
+                <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs text-muted-foreground">Physical VaR (2100)</p>
+                  <p className="font-semibold">{toCompactCurrency(selectedAssetVaR)}</p>
+                </div>
+                <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs text-muted-foreground">Portfolio VaR Share</p>
+                  <p className="font-semibold">
+                    {portfolioTotalVaR ? ((selectedAssetVaR / portfolioTotalVaR) * 100).toFixed(2) : "0.00"}%
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="mb-2 text-sm font-medium">Hazard Breakdown</p>
+                  <div className="space-y-2">
+                    {(Object.keys(selectedBranchFromMap.hazards) as Array<keyof typeof selectedBranchFromMap.hazards>).map((hazard) => (
+                      <div key={hazard}>
+                        <div className="flex items-center justify-between text-xs">
+                          <span>{HAZARD_LABELS[hazard]}</span>
+                          <span>{selectedBranchFromMap.hazards[hazard].toFixed(2)}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 rounded-full bg-muted/70">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-indigo-500"
+                            style={{ width: `${Math.min(100, selectedBranchFromMap.hazards[hazard])}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="mb-2 text-sm font-medium">Risk Trajectory</p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Baseline (2020)</span><span>{selectedBranchFromMap.risk_scores.baseline.toFixed(2)}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Short Term (2030)</span><span>{selectedBranchFromMap.risk_scores.short_term.toFixed(2)}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Medium Term (2050)</span><span>{selectedBranchFromMap.risk_scores.medium_term.toFixed(2)}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Long Term (2100)</span><span>{selectedBranchFromMap.risk_scores.long_term.toFixed(2)}</span></div>
+                  </div>
+                </div>
+              </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <Card className="hover-lift">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Asset Portfolio Manager</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  downloadCsv("portfolio.csv", [
+                    ["ID", "Name", "City", "Latitude", "Longitude", "Asset Value"],
+                    ...filtered.map((branch) => [
+                      branch.id,
+                      branch.name,
+                      branch.city,
+                      String(branch.lat),
+                      String(branch.lng),
+                      String(branch.asset_value),
+                    ]),
+                  ])
+                }
+              >
+                <Download className="mr-2 size-4" /> Export CSV
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
             <Input placeholder="Search by branch name..." value={query} onChange={(event) => setQuery(event.target.value)} />
             <Select value={cityFilter} onValueChange={(value) => setCityFilter(value ?? "all")}>
@@ -88,22 +198,32 @@ export default function PortfolioPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="max-h-[560px] overflow-auto rounded-xl border border-white/20 dark:border-white/10">
+          <div
+            className={`${listViewportHeight} overflow-auto rounded-xl border border-white/20 pr-6 dark:border-white/10`}
+            style={{ scrollbarGutter: "stable both-edges" }}
+          >
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
                 <TableRow>
-                  <TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>City</TableHead><TableHead>Asset</TableHead><TableHead className="text-right">Actions</TableHead>
+                  <TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>City</TableHead><TableHead>Asset</TableHead><TableHead className="sticky right-0 z-20 bg-background/95 text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((branch) => (
-                  <TableRow key={branch.id}>
+                  <TableRow key={branch.id} className={branch.id === selectedBranchId ? "bg-blue-500/10" : ""}>
                     <TableCell>{branch.id}</TableCell>
                     <TableCell>{branch.name}</TableCell>
                     <TableCell>{branch.city}</TableCell>
                     <TableCell>{toCompactCurrency(branch.asset_value)}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="sticky right-0 z-10 bg-background/90 pr-4 text-right backdrop-blur-sm">
                       <div className="flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openDetails(branch.id)}
+                        >
+                          Detail
+                        </Button>
                         <Button
                           size="icon"
                           variant="outline"
@@ -130,8 +250,9 @@ export default function PortfolioPage() {
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="space-y-3 rounded-2xl border border-white/20 bg-white/25 p-4 backdrop-blur-md dark:border-white/10 dark:bg-white/5">
         <h3 className="text-xl font-semibold">{editingId ? "Edit Branch" : "Add New Branch"}</h3>
@@ -144,5 +265,13 @@ export default function PortfolioPage() {
       </div>
       </div>
     </div>
+  );
+}
+
+export default function PortfolioPage() {
+  return (
+    <Suspense fallback={<div className="fade-in-up p-4 text-sm text-muted-foreground">Loading portfolio...</div>}>
+      <PortfolioPageContent />
+    </Suspense>
   );
 }

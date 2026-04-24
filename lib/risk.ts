@@ -17,12 +17,22 @@ export function toCurrency(value: number) {
 }
 
 export function toCompactCurrency(value: number) {
-  return new Intl.NumberFormat("en-PK", {
-    style: "currency",
-    currency: "PKR",
-    notation: "compact",
-    maximumFractionDigits: 2,
-  }).format(value);
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+
+  if (abs >= 1_000_000_000_000) {
+    return `${sign}Rs ${(abs / 1_000_000_000_000).toFixed(2).replace(/\.?0+$/, "")}T`;
+  }
+  if (abs >= 1_000_000_000) {
+    return `${sign}Rs ${(abs / 1_000_000_000).toFixed(2).replace(/\.?0+$/, "")}B`;
+  }
+  if (abs >= 1_000_000) {
+    return `${sign}Rs ${(abs / 1_000_000).toFixed(2).replace(/\.?0+$/, "")}M`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}Rs ${(abs / 1_000).toFixed(2).replace(/\.?0+$/, "")}K`;
+  }
+  return `${sign}Rs ${abs.toFixed(2).replace(/\.?0+$/, "")}`;
 }
 
 export function calculateCompositeRisk(branch: Branch) {

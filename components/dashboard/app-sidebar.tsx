@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { Moon, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { href: "/dashboard", label: "Dashboard" },
   { href: "/portfolio", label: "Asset Portfolio Manager" },
   { href: "/risk-analysis", label: "Risk Change Analysis" },
   { href: "/hazard-matrix", label: "Hazard Matrix" },
@@ -16,6 +16,15 @@ const links = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+
+  useEffect(() => {
+    const stored = localStorage.getItem("theme");
+    if (stored === "dark") {
+      document.documentElement.classList.add("dark");
+    } else if (stored === "light") {
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
 
   const toggleTheme = () => {
     const root = document.documentElement;
@@ -28,9 +37,9 @@ export function AppSidebar() {
     <aside className="glass-panel sticky top-4 m-4 flex h-[calc(100vh-2rem)] w-72 flex-col rounded-3xl border">
       <div className="border-b border-white/15 p-6 dark:border-white/10">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-primary p-2 text-primary-foreground shadow-md">
+          <Link href="/dashboard" className="rounded-xl bg-primary p-2 text-primary-foreground shadow-md transition-opacity hover:opacity-85">
             <ShieldCheck className="size-5" />
-          </div>
+          </Link>
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Askari Bank</p>
             <h1 className="text-sm font-semibold">Climate Risk Command Center</h1>

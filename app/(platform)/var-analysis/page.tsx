@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { useBranchStore } from "@/components/dashboard/branch-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { calculateVaR, toCompactCurrency, toCurrency } from "@/lib/risk";
 
@@ -85,7 +85,7 @@ export default function VarAnalysisPage() {
         <CardContent className="space-y-3">
           <Select value={selectedBranch?.id ?? ""} onValueChange={(value) => setSelectedId(value ?? "")}>
             <SelectTrigger className="w-full md:w-[460px]">
-              <SelectValue placeholder="Select branch" />
+              <span className="truncate text-left">{selectedBranch?.name ?? "Select branch"}</span>
             </SelectTrigger>
             <SelectContent className="w-full md:w-[460px]">
               {branches.map((branch) => (

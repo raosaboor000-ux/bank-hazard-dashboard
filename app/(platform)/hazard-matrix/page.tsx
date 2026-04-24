@@ -4,18 +4,18 @@ import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useBranchStore } from "@/components/dashboard/branch-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { HAZARD_LABELS, calculateCompositeRisk } from "@/lib/risk";
 import type { HazardKey } from "@/types/branch";
 
 const hazardKeys: HazardKey[] = ["flood", "heatwave", "drought", "urban_flood", "extreme_rain"];
 
 function cellColor(value: number) {
-  if (value <= 20) return "bg-green-400/20 text-green-300";
-  if (value <= 40) return "bg-yellow-400/20 text-yellow-300";
-  if (value <= 60) return "bg-orange-400/20 text-orange-300";
-  if (value <= 80) return "bg-red-400/20 text-red-300";
-  return "bg-red-500/25 text-red-200";
+  if (value <= 20) return "bg-green-500/22 text-green-100";
+  if (value <= 40) return "bg-yellow-500/28 text-yellow-50";
+  if (value <= 60) return "bg-orange-500/32 text-orange-50";
+  if (value <= 80) return "bg-red-500/36 text-red-50";
+  return "bg-red-700/45 text-red-50";
 }
 
 export default function HazardMatrixPage() {
@@ -55,11 +55,11 @@ export default function HazardMatrixPage() {
                 <tr key={branch.id} className="border-b">
                   <td className="p-2">{branch.name}</td>
                   {hazardKeys.map((hazard) => (
-                    <td key={hazard} className="p-2">
-                      <span className={`rounded px-2 py-1 ${cellColor(branch.hazards[hazard])}`}>{branch.hazards[hazard]}</span>
+                    <td key={hazard} className={`p-2 text-center font-medium ${cellColor(branch.hazards[hazard])}`}>
+                      {branch.hazards[hazard].toFixed(2)}
                     </td>
                   ))}
-                  <td className="p-2 font-medium">{calculateCompositeRisk(branch).toFixed(1)}</td>
+                  <td className="p-2 font-medium">{calculateCompositeRisk(branch).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -73,7 +73,7 @@ export default function HazardMatrixPage() {
         <CardContent className="space-y-4">
           <Select value={selectedBranch?.id ?? ""} onValueChange={(value) => setSelectedId(value ?? "")}>
             <SelectTrigger className="w-full md:w-[460px]">
-              <SelectValue placeholder="Select branch" />
+              <span className="truncate text-left">{selectedBranch?.name ?? "Select branch"}</span>
             </SelectTrigger>
             <SelectContent className="w-full md:w-[460px]">
               {branches.map((branch) => (

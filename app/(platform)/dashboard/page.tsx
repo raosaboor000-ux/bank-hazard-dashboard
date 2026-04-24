@@ -6,6 +6,8 @@ import { KpiCard } from "@/components/dashboard/kpi-card";
 import { useBranchStore } from "@/components/dashboard/branch-store";
 import { average, calculateCompositeRisk, calculateVaR, toCompactCurrency } from "@/lib/risk";
 
+const toMax3Decimals = (value: number) => Number(value.toFixed(3)).toString();
+
 const RiskMap = dynamic(() => import("@/components/dashboard/risk-map").then((m) => m.RiskMap), {
   ssr: false,
   loading: () => <div className="h-[360px] animate-pulse rounded-md bg-muted" />,
@@ -77,7 +79,7 @@ export default function DashboardPage() {
                 <div key={row.name} className="rounded-xl border border-white/20 bg-white/35 p-3 transition-all duration-300 hover:bg-white/55 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10">
                   <div className="flex items-center justify-between text-sm font-medium">
                     <span>{row.name}</span>
-                    <span>{row.risk.toFixed(1)} Risk</span>
+                  <span>{row.risk.toFixed(2)} Risk</span>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted/80">
                     <div className="h-full rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 transition-all duration-500" style={{ width: `${Math.min(100, row.risk)}%` }} />
@@ -100,6 +102,7 @@ export default function DashboardPage() {
                 <XAxis dataKey="year" stroke="rgba(148,163,184,0.85)" />
                 <YAxis stroke="rgba(148,163,184,0.85)" />
                 <Tooltip
+                  formatter={(value) => toMax3Decimals(Number(value ?? 0))}
                   contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }}
                 />
                 <Line dataKey="score" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
