@@ -2,22 +2,32 @@
 
 import { useMemo, useState } from "react";
 import { AlertTriangle, CalendarDays, ClipboardList, Gauge, Globe2, LineChart, ShieldCheck } from "lucide-react";
+import { RiskGauge } from "@/components/dashboard/risk-gauge";
+import { useBranchStore } from "@/components/dashboard/branch-store";
+import { useScenario } from "@/components/dashboard/scenario-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { calculateCompositeRisk, calculateVaR, getRiskCategory, toCompactCurrency } from "@/lib/risk";
-import { useBranchStore } from "@/components/dashboard/branch-store";
+import {
+  getPortfolioWeightedComposite,
+  getRiskCategory,
+  getTotalPortfolioPhysicalVaR,
+  toCompactCurrency,
+  varToMillionsPkrLabel,
+  type IpcgScenarioId,
+  type TimeHorizonId,
+} from "@/lib/risk";
 
-const scenarios = [
-  { id: "ssp1-2.6", label: "SSP1-2.6", subtitle: "Low emissions", warming: "+1.5C", multiplier: 0.92 },
-  { id: "ssp2-4.5", label: "SSP2-4.5", subtitle: "Moderate emissions", warming: "+2.7C", multiplier: 1.08 },
-  { id: "ssp5-8.5", label: "SSP5-8.5", subtitle: "High emissions", warming: "+4.4C", multiplier: 1.26 },
-] as const;
+const FUTURE_SCENARIOS = [
+  { id: "ssp1-2.6" as const, label: "SSP1-2.6", subtitle: "Low emissions", warming: "+1.5C" },
+  { id: "ssp2-4.5" as const, label: "SSP2-4.5", subtitle: "Moderate emissions", warming: "+2.7C" },
+  { id: "ssp5-8.5" as const, label: "SSP5-8.5", subtitle: "High emissions", warming: "+4.4C" },
+];
 
-const horizons = [
-  { id: "short", label: "Short-term (2030)", riskWeight: 1.0 },
-  { id: "medium", label: "Medium-term (2050)", riskWeight: 1.12 },
-  { id: "long", label: "Long-term (2100)", riskWeight: 1.26 },
-] as const;
+const HORIZONS = [
+  { id: "short" as const, label: "Short-term (2030)" },
+  { id: "medium" as const, label: "Medium-term (2050)" },
+  { id: "long" as const, label: "Long-term (2100)" },
+];
 
 const stressOptions = [
   { id: "once-100", label: "1-in-100 year (Severe)", varLift: 1.8, carFloor: 11.5, lcrFloor: 100 },
@@ -33,34 +43,54 @@ const roadmap = [
   { name: "Full Compliance", due: "Jun 2029", progress: 5 },
 ];
 
+function scenarioLabel(id: IpcgScenarioId) {
+  if (id === "historical") return "Baseline 2020 (Historical)";
+  const s = FUTURE_SCENARIOS.find((x) => x.id === id);
+  return s ? `${s.label} (${s.subtitle})` : id;
+}
+
+function horizonLabel(h: TimeHorizonId) {
+  return HORIZONS.find((x) => x.id === h)?.label ?? h;
+}
+
+function riskBadgeClass(score: number) {
+  if (score <= 20) return "bg-emerald-700 text-white";
+  if (score <= 40) return "bg-lime-600/90 text-slate-950";
+  if (score <= 60) return "bg-amber-500 text-slate-950";
+  if (score <= 80) return "bg-orange-600 text-white";
+  return "bg-red-700 text-white";
+}
+
 export default function ScenarioStrategyPage() {
   const { branches } = useBranchStore();
-  const [scenarioId, setScenarioId] = useState<(typeof scenarios)[number]["id"]>("ssp1-2.6");
-  const [horizonId, setHorizonId] = useState<(typeof horizons)[number]["id"]>("short");
+  const { scenarioId, horizonId, setScenarioId, setHorizonId } = useScenario();
   const [stressId, setStressId] = useState<(typeof stressOptions)[number]["id"]>("once-100");
 
-  const scenario = scenarios.find((item) => item.id === scenarioId) ?? scenarios[0];
-  const horizon = horizons.find((item) => item.id === horizonId) ?? horizons[0];
+  const isHistorical = scenarioId === "historical";
   const stress = stressOptions.find((item) => item.id === stressId) ?? stressOptions[0];
 
   const { compositeRisk, physicalVaR, stressedVaR, projectedCar, projectedLcr } = useMemo(() => {
-    const baseComposite = branches.reduce((acc, branch) => acc + calculateCompositeRisk(branch), 0) / branches.length;
-    const adjustedRisk = baseComposite * scenario.multiplier * horizon.riskWeight;
-    const totalVaR = branches.reduce(
-      (acc, branch) => acc + calculateVaR(branch.asset_value, calculateCompositeRisk(branch)),
-      0,
+    const composite = getPortfolioWeightedComposite(
+      branches,
+      scenarioId,
+      isHistorical ? "short" : horizonId,
     );
-    const stressVar = totalVaR * stress.varLift;
+    const totalPkr = getTotalPortfolioPhysicalVaR(
+      branches,
+      scenarioId,
+      isHistorical ? "short" : horizonId,
+    );
+    const stressVar = totalPkr * stress.varLift;
     const car = Math.max(stress.carFloor, 15.8 - (stress.varLift - 1) * 2.2);
     const lcr = Math.max(stress.lcrFloor, 132 - (stress.varLift - 1) * 20);
     return {
-      compositeRisk: adjustedRisk,
-      physicalVaR: totalVaR,
+      compositeRisk: composite,
+      physicalVaR: totalPkr,
       stressedVaR: stressVar,
       projectedCar: car,
       projectedLcr: lcr,
     };
-  }, [branches, scenario.multiplier, horizon.riskWeight, stress.varLift, stress.carFloor, stress.lcrFloor]);
+  }, [branches, scenarioId, horizonId, isHistorical, stress.varLift, stress.carFloor, stress.lcrFloor]);
 
   return (
     <div className="fade-in-up space-y-4">
@@ -72,47 +102,70 @@ export default function ScenarioStrategyPage() {
       <section className="grid gap-4 xl:grid-cols-2">
         <Card className="hover-lift">
           <CardHeader className="border-b pb-4">
-            <CardTitle className="flex items-center gap-2"><LineChart className="size-5" /> Portfolio Summary</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <LineChart className="size-5" /> Portfolio Summary
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
             <div className="rounded-xl border border-white/20 bg-white/20 p-4 text-center dark:border-white/10 dark:bg-white/5">
-              <p className="text-5xl font-bold">{compositeRisk.toFixed(2)}</p>
+              <p className="text-5xl font-bold tabular-nums">{Math.round(compositeRisk)}</p>
               <p className="text-muted-foreground">Composite Risk (0-100)</p>
-              <div className="mx-auto mt-4 h-4 w-full max-w-sm rounded-full bg-gradient-to-r from-green-600 via-yellow-500 to-red-600" />
+              <div className="mx-auto mt-4 w-full max-w-sm">
+                <RiskGauge score={compositeRisk} />
+              </div>
             </div>
             <div className="rounded-xl border border-white/20 bg-white/20 p-4 text-center dark:border-white/10 dark:bg-white/5">
-              <p className="text-5xl font-bold">{toCompactCurrency(physicalVaR)}</p>
-              <p className="text-muted-foreground">Physical VaR</p>
+              <p className="text-5xl font-bold tabular-nums">{varToMillionsPkrLabel(physicalVaR)}</p>
+              <p className="text-muted-foreground">Physical VaR (PKR M)</p>
             </div>
-            <div className="rounded-full bg-yellow-500 px-5 py-2 font-semibold text-slate-950">
-              Portfolio: {getRiskCategory(compositeRisk)} Risk ({compositeRisk.toFixed(2)}/100)
+            <div className={`inline-flex w-full max-w-sm justify-center rounded-full px-5 py-2.5 text-sm font-semibold ${riskBadgeClass(compositeRisk)}`}>
+              Portfolio: {getRiskCategory(compositeRisk)} Risk ({Math.round(compositeRisk)}/100)
             </div>
             <p className="text-sm text-muted-foreground">
-              Current: {scenario.label} / {horizon.label}
+              Current: {scenarioLabel(scenarioId)}
+              {isHistorical ? " · Reference year 2020" : ` / ${horizonLabel(horizonId)}`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              VaR uses asset value × (branch risk / 100); branch risk is baseline (2020) in historical mode, or IPCC & horizon–adjusted composite otherwise.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Full currency: {toCompactCurrency(physicalVaR)} total at-risk exposure
             </p>
           </CardContent>
         </Card>
 
         <Card className="hover-lift">
           <CardHeader className="border-b pb-4">
-            <CardTitle className="flex items-center gap-2"><Globe2 className="size-5" /> IPCC Scenario & Time Horizon</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Globe2 className="size-5" /> IPCC Scenario & Time Horizon
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
             <div className="rounded-xl border border-white/20 bg-white/20 p-4 dark:border-white/10 dark:bg-white/5">
               <p className="text-lg font-semibold">Historical Baseline (2020)</p>
-              <div className="mt-2 rounded-lg bg-slate-200/35 p-3 text-center font-semibold text-foreground dark:bg-slate-700/40">
-                Reference Period
-              </div>
+              <p className="mb-2 text-sm text-muted-foreground">SBP reference period: risk from stored baseline scores (not IPCC future pathways).</p>
+              <button
+                type="button"
+                onClick={() => setScenarioId("historical")}
+                className={`w-full rounded-xl p-3 text-center text-sm font-semibold transition ${
+                  isHistorical ? "bg-emerald-700 text-white" : "bg-slate-200/35 dark:bg-slate-700/40"
+                }`}
+              >
+                Reference Period (2020)
+              </button>
             </div>
             <div className="rounded-xl border border-white/20 bg-white/20 p-4 dark:border-white/10 dark:bg-white/5">
               <p className="mb-3 text-lg font-semibold">Future IPCC Scenarios</p>
               <div className="grid gap-2 sm:grid-cols-2">
-                {scenarios.map((item) => (
+                {FUTURE_SCENARIOS.map((item) => (
                   <button
+                    type="button"
                     key={item.id}
-                    onClick={() => setScenarioId(item.id)}
+                    onClick={() => setScenarioId(item.id as IpcgScenarioId)}
                     className={`rounded-xl p-3 text-left transition ${
-                      scenarioId === item.id ? "bg-emerald-700 text-white" : "bg-slate-200/35 dark:bg-slate-700/40"
+                      !isHistorical && scenarioId === item.id
+                        ? "bg-emerald-700 text-white"
+                        : "bg-slate-200/35 dark:bg-slate-700/40"
                     }`}
                   >
                     <p className="font-bold">{item.label}</p>
@@ -122,16 +175,23 @@ export default function ScenarioStrategyPage() {
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border border-white/20 bg-white/20 p-4 dark:border-white/10 dark:bg-white/5">
+            <div className={`rounded-xl border border-white/20 bg-white/20 p-4 dark:border-white/10 dark:bg-white/5 ${isHistorical ? "opacity-60" : ""}`}>
               <p className="mb-3 text-lg font-semibold">Time Horizon</p>
+              {isHistorical ? (
+                <p className="text-sm text-muted-foreground">N/A in baseline 2020 — select a future SSP to compare 2030, 2050, or 2100.</p>
+              ) : null}
               <div className="grid gap-2 sm:grid-cols-2">
-                {horizons.map((item) => (
+                {HORIZONS.map((item) => (
                   <button
+                    type="button"
                     key={item.id}
-                    onClick={() => setHorizonId(item.id)}
-                    className={`rounded-xl p-3 text-center font-semibold transition ${
-                      horizonId === item.id ? "bg-emerald-700 text-white" : "bg-slate-200/35 dark:bg-slate-700/40"
-                    }`}
+                    disabled={isHistorical}
+                    onClick={() => setHorizonId(item.id as TimeHorizonId)}
+                    className={`rounded-xl p-3 text-center text-sm font-semibold transition ${
+                      horizonId === item.id && !isHistorical
+                        ? "bg-emerald-700 text-white"
+                        : "bg-slate-200/35 dark:bg-slate-700/40"
+                    } ${isHistorical ? "pointer-events-none cursor-not-allowed" : ""}`}
                   >
                     {item.label}
                   </button>
@@ -145,10 +205,15 @@ export default function ScenarioStrategyPage() {
       <section className="grid gap-4 xl:grid-cols-2">
         <Card className="hover-lift">
           <CardHeader className="border-b pb-4">
-            <CardTitle className="flex items-center gap-2"><Gauge className="size-5" /> Climate Stress Test</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Gauge className="size-5" /> Climate Stress Test
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pt-4">
-            <Select value={stressId} onValueChange={(value) => setStressId((value as (typeof stressOptions)[number]["id"]) ?? "once-100")}>
+            <Select
+              value={stressId}
+              onValueChange={(value) => setStressId((value as (typeof stressOptions)[number]["id"]) ?? "once-100")}
+            >
               <SelectTrigger className="w-full md:w-[420px]">
                 <span className="truncate text-left">{stress.label}</span>
               </SelectTrigger>
@@ -160,22 +225,32 @@ export default function ScenarioStrategyPage() {
                 ))}
               </SelectContent>
             </Select>
-            <p><strong>Stressed VaR:</strong> {toCompactCurrency(stressedVaR)} ({stress.varLift.toFixed(2)}x baseline)</p>
-            <p><strong>Projected CAR:</strong> {projectedCar.toFixed(2)}% (Min: {stress.carFloor.toFixed(2)}%) {projectedCar >= stress.carFloor ? "✅ Adequate" : "⚠️ Low"}</p>
-            <p><strong>Projected LCR:</strong> {projectedLcr.toFixed(2)}% (Min: {stress.lcrFloor.toFixed(2)}%) {projectedLcr >= stress.lcrFloor ? "✅ Adequate" : "⚠️ Low"}</p>
+            <p>
+              <strong>Stressed VaR:</strong> {toCompactCurrency(stressedVaR)} ({stress.varLift.toFixed(2)}x baseline) · {varToMillionsPkrLabel(stressedVaR)} PKR M
+            </p>
+            <p>
+              <strong>Projected CAR:</strong> {projectedCar.toFixed(2)}% (Min: {stress.carFloor.toFixed(2)}%) {projectedCar >= stress.carFloor ? "✅ Adequate" : "⚠️ Low"}
+            </p>
+            <p>
+              <strong>Projected LCR:</strong> {projectedLcr.toFixed(2)}% (Min: {stress.lcrFloor.toFixed(2)}%) {projectedLcr >= stress.lcrFloor ? "✅ Adequate" : "⚠️ Low"}
+            </p>
           </CardContent>
         </Card>
 
         <Card className="hover-lift">
           <CardHeader className="border-b pb-4">
-            <CardTitle className="flex items-center gap-2"><ClipboardList className="size-5" /> Implementation Roadmap</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <ClipboardList className="size-5" /> Implementation Roadmap
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pt-4">
             {roadmap.map((item) => (
               <div key={item.name}>
                 <div className="mb-1 flex items-center justify-between text-sm">
                   <span>{item.name}</span>
-                  <span>{item.due} · {item.progress}%</span>
+                  <span>
+                    {item.due} · {item.progress}%
+                  </span>
                 </div>
                 <div className="h-2 rounded-full bg-muted">
                   <div className="h-full rounded-full bg-emerald-700" style={{ width: `${item.progress}%` }} />

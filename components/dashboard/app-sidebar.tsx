@@ -8,11 +8,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { href: "/portfolio", label: "Asset Portfolio Manager" },
-  { href: "/risk-analysis", label: "Risk Change Analysis" },
-  { href: "/hazard-matrix", label: "Hazard Matrix" },
-  { href: "/var-analysis", label: "Physical VaR" },
-  { href: "/scenario-strategy", label: "Scenario & Strategy" },
+  { href: "/portfolio", label: "Asset Addition" },
+  { href: "/analytics", label: "Analytics" },
 ];
 
 export function AppSidebar() {

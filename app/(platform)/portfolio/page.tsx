@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
-import { Download, Pencil, Trash2 } from "lucide-react";
+import { Suspense, useMemo, useRef, useState } from "react";
+import { Download, Pencil, Trash2, Upload } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useBranchStore } from "@/components/dashboard/branch-store";
+import { useScenario } from "@/components/dashboard/scenario-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +12,19 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { downloadCsv } from "@/lib/csv";
-import { HAZARD_LABELS, calculateCompositeRisk, calculateVaR, getRiskCategory, toCompactCurrency, toCurrency } from "@/lib/risk";
+import { applyPortfolioCsv } from "@/lib/portfolio-csv";
+import {
+  HAZARD_LABELS,
+  getBranchPhysicalVaR,
+  getBranchScenarioRiskScore,
+  getRiskCategory,
+  getTotalPortfolioPhysicalVaR,
+  toCompactCurrency,
+  toCurrency,
+} from "@/lib/risk";
 
 function PortfolioPageContent() {
+  const { scenarioId, horizonId } = useScenario();
   const { branches, addBranch, updateBranch, deleteBranch } = useBranchStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -23,16 +34,21 @@ function PortfolioPageContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(searchParams.get("branch"));
   const [form, setForm] = useState({ name: "", city: "Lahore", lat: "", lng: "", asset_value: "" });
+  const [importMessage, setImportMessage] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isHistorical = scenarioId === "historical";
+  const effHorizon = isHistorical ? "short" : horizonId;
 
   const cities = useMemo(() => ["all", ...new Set(branches.map((branch) => branch.city))], [branches]);
   const selectedBranchFromMap = branches.find((branch) => branch.id === selectedBranchId);
   const selectedAssetVaR = selectedBranchFromMap
-    ? calculateVaR(selectedBranchFromMap.asset_value, selectedBranchFromMap.risk_scores.long_term)
+    ? getBranchPhysicalVaR(selectedBranchFromMap, scenarioId, effHorizon)
     : 0;
-  const portfolioTotalVaR = branches.reduce(
-    (acc, branch) => acc + calculateVaR(branch.asset_value, branch.risk_scores.long_term),
-    0,
-  );
+  const portfolioTotalVaR = getTotalPortfolioPhysicalVaR(branches, scenarioId, effHorizon);
+  const selectedScenarioScore = selectedBranchFromMap
+    ? getBranchScenarioRiskScore(selectedBranchFromMap, scenarioId, effHorizon)
+    : 0;
   const listViewportHeight = selectedBranchFromMap ? "max-h-[360px]" : "max-h-[560px]";
   const filtered = branches.filter(
     (branch) =>
@@ -68,6 +84,25 @@ function PortfolioPageContent() {
     router.replace(`${pathname}?${params.toString()}`);
   };
 
+  const contextHint = isHistorical
+    ? "Baseline 2020 (historical) · VaR and scores match Scenario & Strategy"
+    : `IPCC / horizon: ${String(scenarioId).replace("ssp", "SSP")} · ${String(horizonId)} (same as Scenario & Strategy page)`;
+
+  const handleImportCsv = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const working = branches.map((b) => ({
+      ...b,
+      hazards: { ...b.hazards },
+      risk_scores: { ...b.risk_scores },
+    }));
+    const r = applyPortfolioCsv(text, working, { addBranch, updateBranch });
+    if (r.error) setImportMessage(r.error);
+    else setImportMessage(`Imported: ${r.added} new branch(es), ${r.updated} row(s) updated.`);
+    event.target.value = "";
+  };
+
   return (
     <div className="fade-in-up space-y-4">
       <header>
@@ -101,9 +136,10 @@ function PortfolioPageContent() {
                   <p className="text-sm text-muted-foreground">{selectedBranchFromMap.city} · Branch ID: {selectedBranchFromMap.id}</p>
                 </div>
                 <Badge className="bg-blue-500/20 text-blue-200">
-                  {getRiskCategory(calculateCompositeRisk(selectedBranchFromMap))} Risk
+                  {getRiskCategory(selectedScenarioScore)} Risk
                 </Badge>
               </div>
+              <p className="text-xs text-muted-foreground">{contextHint}</p>
 
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
@@ -111,11 +147,11 @@ function PortfolioPageContent() {
                   <p className="font-semibold">{toCurrency(selectedBranchFromMap.asset_value)}</p>
                 </div>
                 <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-xs text-muted-foreground">Composite Risk</p>
-                  <p className="font-semibold">{calculateCompositeRisk(selectedBranchFromMap).toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground">Branch risk (active scenario)</p>
+                  <p className="font-semibold">{selectedScenarioScore.toFixed(2)}</p>
                 </div>
                 <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-xs text-muted-foreground">Physical VaR (2100)</p>
+                  <p className="text-xs text-muted-foreground">Physical VaR (active scenario)</p>
                   <p className="font-semibold">{toCompactCurrency(selectedAssetVaR)}</p>
                 </div>
                 <div className="rounded-xl border border-white/20 bg-white/20 p-3 dark:border-white/10 dark:bg-white/5">
@@ -165,12 +201,44 @@ function PortfolioPageContent() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Asset Portfolio Manager</CardTitle>
             <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleImportCsv}
+              />
               <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="mr-2 size-4" /> Import CSV
+              </Button>
+              <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() =>
                   downloadCsv("portfolio.csv", [
-                    ["ID", "Name", "City", "Latitude", "Longitude", "Asset Value"],
+                    [
+                      "ID",
+                      "Name",
+                      "City",
+                      "Latitude",
+                      "Longitude",
+                      "Asset Value",
+                      "flood",
+                      "heatwave",
+                      "drought",
+                      "urban_flood",
+                      "extreme_rain",
+                      "baseline",
+                      "short_term",
+                      "medium_term",
+                      "long_term",
+                    ],
                     ...filtered.map((branch) => [
                       branch.id,
                       branch.name,
@@ -178,6 +246,15 @@ function PortfolioPageContent() {
                       String(branch.lat),
                       String(branch.lng),
                       String(branch.asset_value),
+                      String(branch.hazards.flood),
+                      String(branch.hazards.heatwave),
+                      String(branch.hazards.drought),
+                      String(branch.hazards.urban_flood),
+                      String(branch.hazards.extreme_rain),
+                      String(branch.risk_scores.baseline),
+                      String(branch.risk_scores.short_term),
+                      String(branch.risk_scores.medium_term),
+                      String(branch.risk_scores.long_term),
                     ]),
                   ])
                 }
@@ -187,6 +264,7 @@ function PortfolioPageContent() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+          {importMessage ? <p className="text-sm text-muted-foreground">{importMessage}</p> : null}
           <div className="grid gap-3 md:grid-cols-2">
             <Input placeholder="Search by branch name..." value={query} onChange={(event) => setQuery(event.target.value)} />
             <Select value={cityFilter} onValueChange={(value) => setCityFilter(value ?? "all")}>

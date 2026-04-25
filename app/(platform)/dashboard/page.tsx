@@ -1,12 +1,27 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { useBranchStore } from "@/components/dashboard/branch-store";
-import { average, calculateCompositeRisk, calculateVaR, toCompactCurrency } from "@/lib/risk";
+import { useScenario } from "@/components/dashboard/scenario-context";
+import {
+  average,
+  getBranchPhysicalVaR,
+  getBranchScenarioRiskScore,
+  getPortfolioWeightedComposite,
+  getTotalPortfolioPhysicalVaR,
+  toCompactCurrency,
+} from "@/lib/risk";
 
 const toMax3Decimals = (value: number) => Number(value.toFixed(3)).toString();
+const chartTooltipStyle = {
+  borderRadius: 12,
+  border: "1px solid rgba(148,163,184,0.35)",
+  background: "rgba(15,23,42,0.95)",
+  color: "#e2e8f0",
+};
 
 const RiskMap = dynamic(() => import("@/components/dashboard/risk-map").then((m) => m.RiskMap), {
   ssr: false,
@@ -15,36 +30,50 @@ const RiskMap = dynamic(() => import("@/components/dashboard/risk-map").then((m)
 
 export default function DashboardPage() {
   const { branches } = useBranchStore();
-  const avgRisk = average(branches.map(calculateCompositeRisk));
-  const totalVaR = branches.reduce((acc, branch) => acc + calculateVaR(branch.asset_value, branch.risk_scores.long_term), 0);
-  const highRiskCount = branches.filter((branch) => calculateCompositeRisk(branch) > 60).length;
+  const { scenarioId, horizonId } = useScenario();
+  const isHistorical = scenarioId === "historical";
+  const eff = isHistorical ? "short" : horizonId;
+  const avgRisk = getPortfolioWeightedComposite(branches, scenarioId, eff);
+  const totalVaR = getTotalPortfolioPhysicalVaR(branches, scenarioId, eff);
+  const highRiskCount = branches.filter((b) => getBranchScenarioRiskScore(b, scenarioId, eff) > 60).length;
 
-  const portfolioTrajectory = ["baseline", "short_term", "medium_term", "long_term"].map((key, idx) => ({
-    year: ["2020", "2030", "2050", "2100"][idx],
-    score: average(
-      branches.map((branch) =>
-        key === "baseline"
-          ? branch.risk_scores.baseline
-          : key === "short_term"
-            ? branch.risk_scores.short_term
-            : key === "medium_term"
-              ? branch.risk_scores.medium_term
-              : branch.risk_scores.long_term,
-      ),
-    ),
-  }));
+  const portfolioTrajectory = useMemo(
+    () =>
+      ["baseline", "short_term", "medium_term", "long_term"].map((key, idx) => ({
+        year: ["2020", "2030", "2050", "2100"][idx] as string,
+        score: average(
+          branches.map((branch) =>
+            key === "baseline"
+              ? branch.risk_scores.baseline
+              : key === "short_term"
+                ? branch.risk_scores.short_term
+                : key === "medium_term"
+                  ? branch.risk_scores.medium_term
+                  : branch.risk_scores.long_term,
+          ),
+        ),
+      })),
+    [branches],
+  );
 
   const varByCity = Object.entries(
     branches.reduce<Record<string, number>>((acc, branch) => {
-      acc[branch.city] = (acc[branch.city] ?? 0) + calculateVaR(branch.asset_value, branch.risk_scores.long_term);
+      acc[branch.city] = (acc[branch.city] ?? 0) + getBranchPhysicalVaR(branch, scenarioId, eff);
       return acc;
     }, {}),
   ).map(([city, value]) => ({ city, value }));
 
   const topMatrix = [...branches]
-    .sort((a, b) => calculateCompositeRisk(b) - calculateCompositeRisk(a))
+    .sort(
+      (a, b) =>
+        getBranchScenarioRiskScore(b, scenarioId, eff) - getBranchScenarioRiskScore(a, scenarioId, eff),
+    )
     .slice(0, 5)
-    .map((branch) => ({ name: branch.name, risk: calculateCompositeRisk(branch), value: branch.asset_value / 1_000_000_000 }));
+    .map((branch) => ({
+      name: branch.name,
+      risk: getBranchScenarioRiskScore(branch, scenarioId, eff),
+      value: branch.asset_value / 1_000_000_000,
+    }));
 
   return (
     <div className="fade-in-up space-y-6">
@@ -59,9 +88,17 @@ export default function DashboardPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Total Branches" value={String(branches.length)} helper="Total branch assets monitored in this demo portfolio." />
-        <KpiCard title="Avg Composite Risk" value={avgRisk.toFixed(1)} helper="Average of flood, heatwave, drought, urban flood, and extreme rain." />
-        <KpiCard title="Total Physical VaR" value={toCompactCurrency(totalVaR)} helper="Portfolio Physical Value at Risk based on long-term risk score." />
-        <KpiCard title="High Risk Branches" value={String(highRiskCount)} helper="Branches with composite risk above 60." />
+        <KpiCard
+          title="Avg Composite Risk"
+          value={avgRisk.toFixed(1)}
+          helper="Value-weighted mean risk (0-100) for the active scenario and time horizon selection."
+        />
+        <KpiCard
+          title="Total Physical VaR"
+          value={toCompactCurrency(totalVaR)}
+          helper="Sum of branch VaR for the active IPCC scenario and time horizon."
+        />
+        <KpiCard title="High Risk Branches" value={String(highRiskCount)} helper="Branches with active scenario risk above 60/100." />
       </section>
 
       <section className="grid items-start gap-8 xl:grid-cols-5">
@@ -103,7 +140,9 @@ export default function DashboardPage() {
                 <YAxis stroke="rgba(148,163,184,0.85)" />
                 <Tooltip
                   formatter={(value) => toMax3Decimals(Number(value ?? 0))}
-                  contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }}
+                  contentStyle={chartTooltipStyle}
+                  labelStyle={{ color: "#f8fafc", fontWeight: 600 }}
+                  itemStyle={{ color: "#e2e8f0" }}
                 />
                 <Line dataKey="score" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
@@ -124,7 +163,9 @@ export default function DashboardPage() {
                 />
                 <Tooltip
                   formatter={(value) => toCompactCurrency(Number(value ?? 0))}
-                  contentStyle={{ borderRadius: 14, border: "1px solid rgba(148,163,184,0.35)", backdropFilter: "blur(12px)", background: "rgba(15,23,42,0.75)" }}
+                  contentStyle={chartTooltipStyle}
+                  labelStyle={{ color: "#f8fafc", fontWeight: 600 }}
+                  itemStyle={{ color: "#e2e8f0" }}
                 />
                 <Bar dataKey="value" fill="url(#cityVarGradient)" radius={[8, 8, 0, 0]} />
                 <defs>

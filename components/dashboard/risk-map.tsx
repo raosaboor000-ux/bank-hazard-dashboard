@@ -3,13 +3,16 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
+import { useScenario } from "@/components/dashboard/scenario-context";
 import type { Branch } from "@/types/branch";
-import { calculateCompositeRisk, getRiskColor, getRiskCategory, toCompactCurrency } from "@/lib/risk";
+import { getBranchPhysicalVaR, getBranchScenarioRiskScore, getRiskColor, getRiskCategory, toCompactCurrency } from "@/lib/risk";
 import "leaflet/dist/leaflet.css";
 
 export function RiskMap({ branches }: { branches: Branch[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const { scenarioId, horizonId } = useScenario();
+  const eff = scenarioId === "historical" ? "short" : horizonId;
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -21,7 +24,8 @@ export function RiskMap({ branches }: { branches: Branch[] }) {
     }).addTo(map);
 
     branches.forEach((branch) => {
-      const score = calculateCompositeRisk(branch);
+      const score = getBranchScenarioRiskScore(branch, scenarioId, eff);
+      const pVar = getBranchPhysicalVaR(branch, scenarioId, eff);
       const marker = L.circleMarker([branch.lat, branch.lng], {
         radius: 8,
         color: getRiskColor(score),
@@ -34,8 +38,9 @@ export function RiskMap({ branches }: { branches: Branch[] }) {
             <strong>${branch.name}</strong><br/>
             <span>${branch.city}</span><br/>
             <span>Asset Value: ${toCompactCurrency(branch.asset_value)}</span><br/>
-            <span>Composite Risk: ${score.toFixed(2)} (${getRiskCategory(score)})</span><br/>
-            <span>2050 Score: ${branch.risk_scores.medium_term.toFixed(2)} | 2100 Score: ${branch.risk_scores.long_term.toFixed(2)}</span><br/>
+            <span>Active risk: ${score.toFixed(2)} (${getRiskCategory(score)})</span><br/>
+            <span>Physical VaR: ${toCompactCurrency(pVar)}</span><br/>
+            <span>Baseline 2020: ${branch.risk_scores.baseline.toFixed(0)} | Long 2100 (stored): ${branch.risk_scores.long_term.toFixed(0)}</span><br/>
             <a href="/portfolio?branch=${branch.id}" data-branch-link="${branch.id}" style="display:inline-block;margin-top:8px;color:#60a5fa;text-decoration:underline;font-weight:600">View asset details</a>
           </div>`,
         );
@@ -56,7 +61,7 @@ export function RiskMap({ branches }: { branches: Branch[] }) {
     return () => {
       map.remove();
     };
-  }, [branches, router]);
+  }, [branches, router, scenarioId, eff]);
 
   return <div ref={mapRef} className="z-0 h-[360px] w-full rounded-md" />;
 }
