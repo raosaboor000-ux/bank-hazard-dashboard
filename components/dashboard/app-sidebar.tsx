@@ -39,7 +39,7 @@ export function AppSidebar() {
             <ShieldCheck className="size-5" />
           </Link>
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Askari Bank</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Alfalah Bank</p>
             <h1 className="text-sm font-semibold">Climate Risk Command Center</h1>
           </div>
         </div>

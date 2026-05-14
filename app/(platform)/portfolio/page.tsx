@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { downloadCsv } from "@/lib/csv";
 import { applyPortfolioCsv } from "@/lib/portfolio-csv";
+import { horizonLabel } from "@/lib/ipcc-scenarios";
 import {
   HAZARD_LABELS,
   getBranchPhysicalVaR,
@@ -21,10 +22,21 @@ import {
   getTotalPortfolioPhysicalVaR,
   toCompactCurrency,
   toCurrency,
+  type IpccScenarioId,
+  type TimeHorizonId,
 } from "@/lib/risk";
 
+const PORTFOLIO_SCENARIO_OPTIONS: { id: IpccScenarioId; label: string }[] = [
+  { id: "historical", label: "Historical (2020)" },
+  { id: "ssp1-2.6", label: "SSP1-2.6" },
+  { id: "ssp2-4.5", label: "SSP2-4.5" },
+  { id: "ssp5-8.5", label: "SSP5-8.5" },
+];
+
+const PORTFOLIO_HORIZON_OPTIONS: TimeHorizonId[] = ["short", "medium", "long"];
+
 function PortfolioPageContent() {
-  const { scenarioId, horizonId } = useScenario();
+  const { scenarioId, horizonId, setScenarioId, setHorizonId } = useScenario();
   const { branches, addBranch, updateBranch, deleteBranch } = useBranchStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -85,8 +97,8 @@ function PortfolioPageContent() {
   };
 
   const contextHint = isHistorical
-    ? "Baseline 2020 (historical) · VaR and scores match Scenario & Strategy"
-    : `IPCC / horizon: ${String(scenarioId).replace("ssp", "SSP")} · ${String(horizonId)} (same as Scenario & Strategy page)`;
+    ? "Historical baseline (2020). Time horizon does not apply. Choose an SSP above to model future periods."
+    : `Metrics use ${String(scenarioId).replace("ssp", "SSP")} · ${horizonLabel(horizonId)} — shared across Dashboard, Analytics, and maps.`;
 
   const handleImportCsv = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -130,14 +142,47 @@ function PortfolioPageContent() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4 rounded-2xl border border-blue-400/30 bg-blue-500/10 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <h3 className="text-xl font-semibold">{selectedBranchFromMap.name}</h3>
                   <p className="text-sm text-muted-foreground">{selectedBranchFromMap.city} · Branch ID: {selectedBranchFromMap.id}</p>
                 </div>
-                <Badge className="bg-blue-500/20 text-blue-200">
-                  {getRiskCategory(selectedScenarioScore)} Risk
-                </Badge>
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  <Select value={scenarioId} onValueChange={(value) => setScenarioId(value as IpccScenarioId)}>
+                    <SelectTrigger size="sm" className="h-8 w-[148px] border-white/25 bg-white/15 text-xs dark:border-white/15 dark:bg-white/10">
+                      <SelectValue placeholder="Scenario" />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {PORTFOLIO_SCENARIO_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={horizonId}
+                    onValueChange={(value) => setHorizonId(value as TimeHorizonId)}
+                    disabled={isHistorical}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="h-8 min-w-[148px] border-white/25 bg-white/15 text-xs dark:border-white/15 dark:bg-white/10"
+                    >
+                      <SelectValue placeholder="Time horizon" />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {PORTFOLIO_HORIZON_OPTIONS.map((hid) => (
+                        <SelectItem key={hid} value={hid} className="text-xs">
+                          {horizonLabel(hid)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Badge className="bg-blue-500/20 text-blue-200">
+                    {getRiskCategory(selectedScenarioScore)} Risk
+                  </Badge>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">{contextHint}</p>
 

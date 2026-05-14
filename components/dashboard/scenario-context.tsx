@@ -1,22 +1,22 @@
 "use client";
 
-import type { IpcgScenarioId, TimeHorizonId } from "@/lib/risk";
+import type { IpccScenarioId, TimeHorizonId } from "@/lib/risk";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 type ScenarioContextValue = {
-  scenarioId: IpcgScenarioId;
+  scenarioId: IpccScenarioId;
   horizonId: TimeHorizonId;
-  setScenarioId: (id: IpcgScenarioId) => void;
+  setScenarioId: (id: IpccScenarioId) => void;
   setHorizonId: (id: TimeHorizonId) => void;
 };
 
 const ScenarioContext = createContext<ScenarioContextValue | null>(null);
 
 export function ScenarioProvider({ children }: { children: React.ReactNode }) {
-  const [scenarioId, setScenarioIdState] = useState<IpcgScenarioId>("ssp1-2.6");
+  const [scenarioId, setScenarioIdState] = useState<IpccScenarioId>("ssp1-2.6");
   const [horizonId, setHorizonIdState] = useState<TimeHorizonId>("short");
 
-  const setScenarioId = useCallback((id: IpcgScenarioId) => {
+  const setScenarioId = useCallback((id: IpccScenarioId) => {
     setScenarioIdState(id);
   }, []);
 

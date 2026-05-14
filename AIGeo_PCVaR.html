@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AIGeo's Climate Risk Analytics | SBP Framework | Full Compliance Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f0f4f9;
+            color: #1a2c3e;
+            padding: 1.5rem;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        
+        .header { margin-bottom: 1.8rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+        .header h1 { font-size: 1.8rem; font-weight: 800; background: linear-gradient(135deg, #0f5b4b, #1a3a4a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .header p { color: #5a7a92; margin-top: 0.3rem; font-size: 0.85rem; }
+        .export-btn { background: #1e6f5c; padding: 0.5rem 1.2rem; border-radius: 2rem; color: white; border: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+        .export-btn:hover { background: #0e5a48; }
+        
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; margin-bottom: 1.2rem; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; margin-bottom: 1.2rem; }
+        .full-width { grid-column: span 2; }
+        
+        .card {
+            background: white;
+            border-radius: 1.2rem;
+            padding: 1.2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+            border: 1px solid #e8edf2;
+            position: relative;
+        }
+        .card-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            border-bottom: 2px solid #eff3f8;
+            padding-bottom: 0.6rem;
+            color: #1a5a4a;
+        }
+        
+        .info-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #e8edf2;
+            color: #5a7a92;
+            font-size: 0.7rem;
+            cursor: help;
+            margin-left: 0.5rem;
+            position: relative;
+        }
+        .info-icon:hover { background: #1e6f5c; color: white; }
+        .info-icon .tooltip-text {
+            visibility: hidden;
+            position: absolute;
+            background: #1a2c3e;
+            color: white;
+            font-size: 0.7rem;
+            padding: 0.5rem 0.8rem;
+            border-radius: 0.6rem;
+            width: 260px;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            font-weight: normal;
+            text-align: center;
+        }
+        .info-icon:hover .tooltip-text { visibility: visible; opacity: 1; }
+        
+        .kpi-row { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .kpi-card {
+            flex: 1;
+            background: linear-gradient(135deg, #f8fafc, #fff);
+            border-radius: 1rem;
+            padding: 0.8rem;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        .kpi-value { font-size: 1.8rem; font-weight: 800; color: #1a5a4a; }
+        .kpi-label { font-size: 0.7rem; color: #6c8dae; margin-top: 0.2rem; }
+        
+        .gauge-container { position: relative; width: 100%; margin: 0.5rem 0; }
+        .gauge-bg { width: 100%; height: 12px; background: linear-gradient(90deg, #2e7d32, #8bc34a, #ffc107, #ff5722, #c62828); border-radius: 12px; position: relative; }
+        .gauge-needle { position: absolute; width: 4px; height: 20px; background: #1a2c3e; top: -8px; border-radius: 2px; transition: left 0.5s ease; }
+        .gauge-needle::after { content: ''; position: absolute; bottom: -4px; left: -4px; width: 12px; height: 12px; background: #1a2c3e; border-radius: 50%; }
+        .gauge-labels { display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.6rem; color: #6c8dae; }
+        
+        .risk-badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 1.5rem; font-size: 0.7rem; font-weight: 600; }
+        .risk-low { background: #2e7d32; color: white; }
+        .risk-moderate { background: #8bc34a; color: #1a2c3e; }
+        .risk-elevated { background: #ffc107; color: #1a2c3e; }
+        .risk-high { background: #ff5722; color: white; }
+        .risk-extreme { background: #c62828; color: white; }
+        
+        /* Redesigned Scenario Section */
+        .scenario-section { display: flex; flex-direction: column; gap: 0.8rem; }
+        .scenario-subsection { border: 1px solid #e8edf2; border-radius: 0.8rem; padding: 0.6rem; background: #fafcff; }
+        .subsection-title { font-size: 0.7rem; font-weight: 600; color: #1a5a4a; margin-bottom: 0.4rem; }
+        .scenario-group, .period-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .scenario-option, .period-option {
+            flex: 1;
+            text-align: center;
+            padding: 0.5rem 0.3rem;
+            border-radius: 0.6rem;
+            background: #f0f4f9;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .scenario-option.active, .period-option.active { background: #1e6f5c; color: white; box-shadow: 0 2px 8px rgba(30,111,92,0.3); }
+        .scenario-desc { font-size: 0.6rem; font-weight: normal; opacity: 0.8; margin-top: 0.2rem; }
+        
+        .asset-item { background: #f8fafc; border-radius: 0.6rem; padding: 0.6rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; }
+        .add-asset { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.4rem; margin-top: 0.6rem; }
+        .add-asset input { padding: 0.5rem; border: 1px solid #cbdde9; border-radius: 0.5rem; font-size: 0.75rem; }
+        button { background: #1e6f5c; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.8rem; cursor: pointer; font-size: 0.75rem; transition: 0.2s; }
+        button:hover { background: #0e5a48; transform: translateY(-1px); }
+        
+        .toggle-group { display: flex; gap: 0.5rem; margin-bottom: 1rem; justify-content: flex-end; }
+        .toggle-btn { background: #0a5796; padding: 0.3rem 0.8rem; border-radius: 1.5rem; font-size: 0.7rem; cursor: pointer; transition: 0.2s; border: none; }
+        .toggle-btn.active { background: #1e6f5c; color: white; }
+        
+        .data-table { width: 100%; font-size: 0.7rem; border-collapse: collapse; }
+        .data-table th, .data-table td { padding: 0.5rem; border-bottom: 1px solid #eef2f8; text-align: left; }
+        .data-table th { font-weight: 600; color: #1a5a4a; }
+        
+        .map-container { height: 280px; border-radius: 0.8rem; overflow: hidden; background: #e8edf2; position: relative; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+        .modal-content { background: white; border-radius: 1.2rem; max-width: 650px; width: 90%; max-height: 85vh; overflow-y: auto; padding: 1.5rem; position: relative; }
+        .modal-close { position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #6c8dae; }
+        
+        .legend { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 0.8rem; padding: 0.6rem; background: #f8fafc; border-radius: 0.6rem; font-size: 0.65rem; align-items: center; }
+        .legend-color { width: 24px; height: 14px; border-radius: 0.2rem; display: inline-block; margin-right: 0.3rem; }
+        
+        .progress-bar { height: 6px; background: #e8edf2; border-radius: 3px; overflow: hidden; margin: 0.3rem 0; }
+        .progress-fill { height: 100%; background: #1e6f5c; border-radius: 3px; transition: width 0.3s; }
+        
+        .footnote { font-size: 0.6rem; color: #6c8dae; margin-top: 0.5rem; }
+        canvas { max-height: 220px; width: 100%; }
+        .trend-up { color: #c23b22; }
+        .hazard-status { font-size: 0.6rem; margin-left: 0.5rem; }
+        
+        @media (max-width: 1000px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } .full-width { grid-column: span 1; } .add-asset { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="container" id="dashboardContainer">
+    <div class="header">
+        <div>
+            <h1><i class="fas fa-chart-line"></i> Taqaddam by AIGeo | SBP Framework Compliance for Climate Physical Risks</h1>
+            <p>Physical Risk Assessment | IPCC Scenarios | Multi-asset Portfolio | Physical VaR | Stress Testing</p> 
+        </div>
+        <button class="export-btn" onclick="exportToPDF()"><i class="fas fa-download"></i> Export Report (PDF)</button>
+    </div>
+
+    <!-- SECTION 1: Early Warning + Stress Test + Roadmap -->
+    <div class="grid-3">
+        <div class="card">
+            <div class="card-title"><i class="fas fa-exclamation-triangle"></i> Early Warning System <span class="info-icon">?<span class="tooltip-text">Real-time alerts for assets exceeding Board risk appetite (60/100). Triggers escalation per Sec 3.2.b.v and BCP activation per Sec 6.4(a).</span></span></div>
+            <div id="earlyWarningContent">Loading...</div>
+        </div>
+        <div class="card">
+            <div class="card-title"><i class="fas fa-chart-line"></i> Climate Stress Test <span class="info-icon">?<span class="tooltip-text">Severe but plausible flood scenarios per Sec 7. Projects impact on Capital Adequacy Ratio (CAR) and Liquidity Coverage Ratio (LCR).</span></span></div>
+            <select id="stressSeverity" style="width:100%; padding:0.5rem; margin-bottom:0.5rem; border-radius:0.5rem; border:1px solid #cbdde9; font-size:0.75rem;">
+                <option value="low">1-in-50 year (Moderate)</option>
+                <option value="medium" selected>1-in-100 year (Severe)</option>
+                <option value="high">1-in-200 year (Extreme)</option>
+            </select>
+            <div id="stressResults"></div>
+        </div>
+        <div class="card">
+            <div class="card-title"><i class="fas fa-tasks"></i> Implementation Roadmap <span class="info-icon">?<span class="tooltip-text">SBP Section 2.3 requires board-approved, time-bound implementation plans by Sep 30, 2026, with full compliance by June 30, 2029.</span></span></div>
+            <div id="roadmapTracker"></div>
+            <div class="footnote">Target deadline: June 30, 2029</div>
+        </div>
+    </div>
+
+    <!-- SECTION 2: Portfolio Summary + Redesigned Scenario Controls + Asset Manager -->
+    <div class="grid-3">
+        <div class="card">
+            <div class="card-title"><i class="fas fa-chart-pie"></i> Portfolio Summary <span class="info-icon">?<span class="tooltip-text">Composite Risk (0-100): Weighted average of all hazards. Physical VaR = Asset Value × (Risk Score / 100). The gauge shows current portfolio risk level.</span></span></div>
+            <div class="kpi-row">
+                <div class="kpi-card"><div class="kpi-value" id="portfolioRisk">—</div><div class="kpi-label">Composite Risk (0-100)</div><div id="riskGauge" class="gauge-container"></div></div>
+                <div class="kpi-card"><div class="kpi-value" id="portfolioVaR">—</div><div class="kpi-label">Physical VaR (PKR M)</div></div>
+            </div>
+            <div id="riskDistribution"></div>
+            <div class="footnote" id="scenarioContext"></div>
+        </div>
+        
+        <!-- REDESIGNED IPCC SCENARIO SECTION -->
+        <div class="card">
+            <div class="card-title"><i class="fas fa-calendar-alt"></i> IPCC Scenario & Time Horizon <span class="info-icon">?<span class="tooltip-text">SSP = Shared Socioeconomic Pathway. Time horizons: Short-term (2030), Medium-term (2050), Long-term (2100).</span></span></div>
+            <div class="scenario-section">
+                <!-- Baseline -->
+                <div class="scenario-subsection">
+                    <div class="subsection-title">📜 Historical Baseline (2020)</div>
+                    <div class="scenario-group">
+                        <div data-scenario="historical" class="scenario-option">Reference Period</div>
+                    </div>
+                </div>
+                <!-- Future Scenarios -->
+                <div class="scenario-subsection">
+                    <div class="subsection-title">🌍 Future IPCC Scenarios</div>
+                    <div class="scenario-group">
+                        <div data-scenario="ssp126" class="scenario-option active">
+                            SSP1-2.6
+                            <div class="scenario-desc">Low emissions, +1.5°C</div>
+                        </div>
+                        <div data-scenario="ssp245" class="scenario-option">
+                            SSP2-4.5
+                            <div class="scenario-desc">Moderate emissions, +2.7°C</div>
+                        </div>
+                        <div data-scenario="ssp585" class="scenario-option">
+                            SSP5-8.5
+                            <div class="scenario-desc">High emissions, +4.4°C</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Time Horizon -->
+                <div class="scenario-subsection">
+                    <div class="subsection-title">⏱️ Time Horizon</div>
+                    <div class="period-group">
+                        <div data-period="short" class="period-option active">Short-term (2030)</div>
+                        <div data-period="medium" class="period-option">Medium-term (2050)</div>
+                        <div data-period="long" class="period-option">Long-term (2100)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title"><i class="fas fa-building"></i> Asset Portfolio Manager <span class="info-icon">?<span class="tooltip-text">Add bank branches or facilities. Requires name, coordinates (Pakistan: lat 23.5-37.5, lng 60-78), and value in PKR Millions.</span></span></div>
+            <div id="assetList"></div>
+            <div class="add-asset">
+                <input type="text" id="assetName" placeholder="Asset Name" value="Faisalabad Plant">
+                <input type="text" id="assetLat" placeholder="Latitude" value="31.418">
+                <input type="text" id="assetLng" placeholder="Longitude" value="73.079">
+                <input type="text" id="assetValue" placeholder="Value (PKR M)" value="450">
+                <button id="addAssetBtn" style="grid-column: span 4;"><i class="fas fa-plus"></i> Add Asset</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 3: Asset Ranking + Trajectories -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title"><i class="fas fa-chart-bar"></i> Asset Ranking | Risk Appetite Limit: 60/100 <span class="info-icon">?<span class="tooltip-text">Bar chart showing each asset's composite risk score. Red line = Board-approved risk appetite (Sec 3.1.d, 5.c). Assets above require escalation.</span></span></div>
+            <canvas id="rankingChart" height="200"></canvas>
+        </div>
+        <div class="card">
+            <div class="card-title"><i class="fas fa-chart-line"></i> Risk Trajectories by Time Horizon <span class="info-icon">?<span class="tooltip-text">Shows how each asset's composite risk evolves from 2020 baseline through 2030, 2050, and 2100 under the selected IPCC scenario.</span></span></div>
+            <canvas id="trajectoryChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- SECTION 4: Hazard Matrix -->
+    <div class="card full-width">
+        <div class="card-title"><i class="fas fa-table"></i> Hazard × Asset Matrix <span class="info-icon">?<span class="tooltip-text">Each cell shows risk score (0-100) for a specific hazard at each asset. Color intensity matches legend below.</span></span>
+            <span style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size:0.7rem;">Materiality Filter (Sec 6.b.i):</span>
+                <div id="materialityToggle" style="width:40px; height:20px; background:#ccc; border-radius:20px; cursor:pointer; position:relative;"></div>
+                <span id="materialityLabel" style="font-size:0.7rem;">Show all</span>
+            </span>
+            <button id="exportMatrixCSV" style="margin-bottom:0.5rem; float:right; font-size:0.7rem;">
+            <i class="fas fa-file-csv"></i> Export Matrix CSV
+            </button>
+        </div>
+        <div id="matrixContainer" style="overflow-x:auto; max-height: 300px;"></div>
+        <div class="legend">
+            <span><span class="legend-color" style="background:#2e7d32;"></span> Low (0-20)</span>
+            <span><span class="legend-color" style="background:#8bc34a;"></span> Moderate (20-40)</span>
+            <span><span class="legend-color" style="background:#ffc107;"></span> Elevated (40-60)</span>
+            <span><span class="legend-color" style="background:#ff5722;"></span> High (60-80)</span>
+            <span><span class="legend-color" style="background:#c62828;"></span> Extreme (80-100)</span>
+        </div>
+    </div>
+
+    <!-- SECTION 5: Map + Risk Change -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title"><i class="fas fa-map-marker-alt"></i> Pakistan Asset Map <span class="info-icon">?<span class="tooltip-text">Geographic distribution of assets. Circle size = asset value. Color = risk level (green=low, red=high). Click any marker for detailed analytics.</span></span></div>
+            <div id="mapContainer" class="map-container"></div>
+            <div class="footnote">Click on any marker to see asset details, hazard breakdown, risk gauge, and zoomed location map.</div>
+        </div>
+        <div class="card">
+            <div class="card-title"><i class="fas fa-chart-line"></i> Risk Change Analysis <span class="info-icon">?<span class="tooltip-text">Compares portfolio risk across IPCC scenarios. Bars show absolute risk scores; red line shows percent change relative to 2020 baseline.</span></span></div>
+            <div class="toggle-group">
+                <button class="toggle-btn active" data-group="change" data-view="chart">📊 Chart View</button>
+                <button class="toggle-btn" data-group="change" data-view="table">📋 Table View</button>
+            </div>
+            <div id="changeViewContainer" style="min-height: 220px;"></div>
+        </div>
+    </div>
+
+    <!-- SECTION 6: VaR -->
+    <div class="card full-width">
+        <div class="card-title"><i class="fas fa-dollar-sign"></i> Physical Value at Risk (VaR) | Asset-Level <span class="info-icon">?<span class="tooltip-text">VaR = Asset Value × (Composite Risk Score / 100). Hover over bars to see each asset's contribution to total portfolio risk.</span></span></div>
+        <div class="toggle-group">
+            <button id="exportVarCSV" style="background: #1e6f5c; padding: 0.2rem 0.6rem; font-size: 0.65rem;">
+            <i class="fas fa-file-csv"></i> Export VaR CSV
+            </button>
+            <button class="toggle-btn active" data-group="var" data-view="chart">📊 Bar Chart</button>
+            <button class="toggle-btn" data-group="var" data-view="table">📋 Table View</button>
+        </div>
+        <div id="varViewContainer" style="min-height: 260px;"></div>
+        <div class="footnote">VaR represents potential climate-driven financial loss exposure under selected scenario/period.</div>
+    </div>
+</div>
+
+<!-- Modal for Asset Details -->
+<div id="assetModal" class="modal">
+    <div class="modal-content">
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div id="modalContent"></div>
+    </div>
+</div>
+
+<script>
+    // =========================================================================
+    // COMPLETE DATAFRAME
+    // =========================================================================
+    const HAZARDS = ['Flood', 'Urban Flood', 'Heatwave', 'Drought', 'Landslide', 'Sea Level Rise', 'Extreme Rain'];
+    const HAZARD_KEYS = ['flood', 'urbanFlood', 'heatwave', 'drought', 'landslide', 'seaLevel', 'extremeRain'];
+    
+    const cityData = {
+        'Karachi': { lat: 24.8607, lng: 67.0011,
+            historical: { flood:38, urbanFlood:62, heatwave:82, drought:40, landslide:7, seaLevel:65, extremeRain:30 },
+            ssp126: { short:{flood:42,urbanFlood:68,heatwave:88,drought:45,landslide:8,seaLevel:72,extremeRain:35}, medium:{flood:44,urbanFlood:70,heatwave:89,drought:46,landslide:9,seaLevel:75,extremeRain:37}, long:{flood:47,urbanFlood:73,heatwave:90,drought:48,landslide:9,seaLevel:80,extremeRain:40} },
+            ssp245: { short:{flood:55,urbanFlood:75,heatwave:91,drought:52,landslide:10,seaLevel:78,extremeRain:48}, medium:{flood:68,urbanFlood:84,heatwave:94,drought:62,landslide:12,seaLevel:85,extremeRain:62}, long:{flood:82,urbanFlood:91,heatwave:96,drought:74,landslide:14,seaLevel:92,extremeRain:78} },
+            ssp585: { short:{flood:68,urbanFlood:82,heatwave:94,drought:62,landslide:12,seaLevel:85,extremeRain:62}, medium:{flood:84,urbanFlood:92,heatwave:97,drought:76,landslide:16,seaLevel:93,extremeRain:80}, long:{flood:94,urbanFlood:97,heatwave:98,drought:88,landslide:20,seaLevel:98,extremeRain:92} } },
+        'Lahore': { lat: 31.5497, lng: 74.3436,
+            historical: { flood:65, urbanFlood:52, heatwave:58, drought:34, landslide:10, seaLevel:4, extremeRain:42 },
+            ssp126: { short:{flood:72,urbanFlood:58,heatwave:65,drought:38,landslide:12,seaLevel:5,extremeRain:48}, medium:{flood:74,urbanFlood:60,heatwave:66,drought:39,landslide:13,seaLevel:6,extremeRain:50}, long:{flood:78,urbanFlood:63,heatwave:68,drought:41,landslide:14,seaLevel:7,extremeRain:53} },
+            ssp245: { short:{flood:80,urbanFlood:68,heatwave:74,drought:45,landslide:15,seaLevel:8,extremeRain:58}, medium:{flood:88,urbanFlood:78,heatwave:82,drought:55,landslide:18,seaLevel:12,extremeRain:70}, long:{flood:94,urbanFlood:86,heatwave:89,drought:68,landslide:22,seaLevel:18,extremeRain:82} },
+            ssp585: { short:{flood:88,urbanFlood:78,heatwave:82,drought:55,landslide:18,seaLevel:12,extremeRain:68}, medium:{flood:95,urbanFlood:88,heatwave:90,drought:70,landslide:24,seaLevel:20,extremeRain:82}, long:{flood:98,urbanFlood:95,heatwave:95,drought:84,landslide:30,seaLevel:30,extremeRain:92} } },
+        'Islamabad': { lat: 33.6844, lng: 73.0479,
+            historical: { flood:52, urbanFlood:40, heatwave:38, drought:28, landslide:42, seaLevel:2, extremeRain:46 },
+            ssp126: { short:{flood:58,urbanFlood:45,heatwave:42,drought:32,landslide:48,seaLevel:3,extremeRain:52}, medium:{flood:60,urbanFlood:47,heatwave:43,drought:33,landslide:50,seaLevel:4,extremeRain:54}, long:{flood:63,urbanFlood:50,heatwave:45,drought:35,landslide:54,seaLevel:5,extremeRain:58} },
+            ssp245: { short:{flood:65,urbanFlood:55,heatwave:52,drought:40,landslide:58,seaLevel:6,extremeRain:62}, medium:{flood:74,urbanFlood:66,heatwave:62,drought:52,landslide:68,seaLevel:10,extremeRain:74}, long:{flood:84,urbanFlood:78,heatwave:74,drought:66,landslide:80,seaLevel:15,extremeRain:86} },
+            ssp585: { short:{flood:72,urbanFlood:66,heatwave:62,drought:52,landslide:68,seaLevel:10,extremeRain:72}, medium:{flood:84,urbanFlood:80,heatwave:76,drought:68,landslide:82,seaLevel:18,extremeRain:86}, long:{flood:92,urbanFlood:90,heatwave:88,drought:82,landslide:92,seaLevel:28,extremeRain:94} } }
+    };
+    
+    let assets = [
+        { id: 0, name: 'Karachi Branch', city: 'Karachi', lat: 24.8607, lng: 67.0011, value: 1200 },
+        { id: 1, name: 'Lahore HO', city: 'Lahore', lat: 31.5497, lng: 74.3436, value: 850 },
+        { id: 2, name: 'Islamabad Office', city: 'Islamabad', lat: 33.6844, lng: 73.0479, value: 620 }
+    ];
+    let nextId = 3;
+    let currentScenario = 'ssp126';
+    let currentPeriod = 'short';
+    let materialityActive = false;
+    
+    let changeView = 'chart';
+    let varView = 'chart';
+    
+    let rankingChart, trajectoryChart, changeChart, varChart;
+    let mapInstance = null;
+    let currentMarkers = [];
+    
+    function getHazardScore(city, hazardKey, scenario, period) {
+        if (scenario === 'historical') return cityData[city].historical[hazardKey];
+        return cityData[city][scenario][period][hazardKey];
+    }
+    
+    function getCompositeRisk(city, scenario, period) {
+        let total = 0;
+        for (let key of HAZARD_KEYS) total += getHazardScore(city, key, scenario, period);
+        return Math.round(total / HAZARD_KEYS.length);
+    }
+    
+    function getHazardStatus(score) {
+        if (score < 20) return { text: 'Low', class: 'risk-low' };
+        if (score < 40) return { text: 'Moderate', class: 'risk-moderate' };
+        if (score < 60) return { text: 'Elevated', class: 'risk-elevated' };
+        if (score < 80) return { text: 'High', class: 'risk-high' };
+        return { text: 'Extreme', class: 'risk-extreme' };
+    }
+    
+    function getAssetRiskData() {
+        return assets.map(asset => {
+            let composite = getCompositeRisk(asset.city, currentScenario, currentPeriod);
+            let hazards = {};
+            for (let i = 0; i < HAZARD_KEYS.length; i++) hazards[HAZARDS[i]] = getHazardScore(asset.city, HAZARD_KEYS[i], currentScenario, currentPeriod);
+            let baseline = getCompositeRisk(asset.city, 'historical', null);
+            return { ...asset, composite, baseline, hazards };
+        });
+    }
+    
+    function getGradientColor(score) {
+        if (score < 20) return { bg: '#2e7d32', light: 'rgba(46,125,50,0.15)' };
+        if (score < 40) return { bg: '#8bc34a', light: 'rgba(139,195,74,0.2)' };
+        if (score < 60) return { bg: '#ffc107', light: 'rgba(255,193,7,0.2)' };
+        if (score < 80) return { bg: '#ff5722', light: 'rgba(255,87,34,0.2)' };
+        return { bg: '#c62828', light: 'rgba(198,40,40,0.2)' };
+    }
+    
+    function updateGauge(containerId, score) {
+        let percentage = Math.min(100, Math.max(0, score));
+        let container = document.getElementById(containerId);
+        if(container) {
+            container.innerHTML = `
+                <div class="gauge-bg">
+                    <div class="gauge-needle" style="left: ${percentage}%;"></div>
+                </div>
+                <div class="gauge-labels">
+                    <span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100</span>
+                </div>
+            `;
+        }
+    }
+    
+    function updateAll() {
+        let assetRisks = getAssetRiskData();
+        let totalValue = assetRisks.reduce((s,a)=>s+a.value,0);
+        let weightedComposite = assetRisks.reduce((s,a)=>s + a.composite * a.value,0)/totalValue;
+        let totalVaR = assetRisks.reduce((s,a)=>s + a.value * a.composite / 100,0);
+        
+        document.getElementById('portfolioRisk').innerHTML = Math.round(weightedComposite);
+        document.getElementById('portfolioVaR').innerHTML = Math.round(totalVaR).toLocaleString();
+        updateGauge('riskGauge', weightedComposite);
+        
+        let level = weightedComposite<20?'Low':weightedComposite<40?'Moderate':weightedComposite<60?'Elevated':weightedComposite<80?'High':'Extreme';
+        let levelClass = level.toLowerCase();
+        document.getElementById('riskDistribution').innerHTML = `<span class="risk-badge risk-${levelClass}">Portfolio: ${level} Risk (${Math.round(weightedComposite)}/100)</span>`;
+        
+        let scenarioName = currentScenario === 'historical' ? 'Baseline 2020' : (currentScenario === 'ssp126' ? 'SSP1-2.6 (Low)' : (currentScenario === 'ssp245' ? 'SSP2-4.5 (Moderate)' : 'SSP5-8.5 (High)'));
+        let periodName = currentPeriod === 'short' ? 'Short-term (2030)' : (currentPeriod === 'medium' ? 'Medium-term (2050)' : 'Long-term (2100)');
+        document.getElementById('scenarioContext').innerHTML = `Current: ${scenarioName} / ${periodName}`;
+        
+        // Early Warning
+        let highRisk = assetRisks.filter(a=>a.composite>=60);
+        let critical = assetRisks.filter(a=>a.composite>=80);
+        document.getElementById('earlyWarningContent').innerHTML = critical.length ? 
+            `<div style="background:#ffebee; padding:0.6rem; border-radius:0.6rem;"><i class="fas fa-skull-crosswalk"></i> <strong>CRITICAL:</strong> ${critical.length} asset(s) exceed Extreme risk threshold (≥80/100). Immediate board escalation required per Sec 3.2.b.v.</div>` :
+            highRisk.length ? `<div style="background:#fff3e0; padding:0.6rem; border-radius:0.6rem;"><i class="fas fa-exclamation-triangle"></i> <strong>WARNING:</strong> ${highRisk.length} asset(s) exceed Board risk appetite limit (60/100). Review required per Sec 3.1.d.</div>` :
+            `<div style="padding:0.4rem;"><i class="fas fa-check-circle"></i> All assets within Board risk appetite. No active alerts.</div>`;
+        
+        // Stress Test with LCR restored
+        let severity = document.getElementById('stressSeverity').value;
+        let multiplier = severity==='low'?1.3:severity==='medium'?1.8:2.5;
+        let stressedVaR = totalVaR * multiplier;
+        let stressedCAR = Math.max(5, 18 - (multiplier-1)*5);
+        let stressedLCR = Math.max(60, 150 - (multiplier-1)*40);
+        document.getElementById('stressResults').innerHTML = `
+            <div style="font-size:0.7rem;">
+                <div><strong>Stressed VaR:</strong> PKR ${Math.round(stressedVaR).toLocaleString()} M (${multiplier}x baseline)</div>
+                <div><strong>Projected CAR:</strong> ${stressedCAR.toFixed(1)}% (Min: 11.5%) ${stressedCAR<11.5?'<span class="trend-up">⚠️ Below requirement</span>':'✅ Adequate'}</div>
+                <div><strong>Projected LCR:</strong> ${stressedLCR.toFixed(0)}% (Min: 100%) ${stressedLCR<100?'<span class="trend-up">⚠️ Liquidity risk</span>':'✅ Adequate'}</div>
+            </div>
+        `;
+        // Export Key data to CSV
+        // Export Hazard Matrix CSV - FIXED
+        document.getElementById('exportMatrixCSV').addEventListener('click', function() {
+            let assetRisks = getAssetRiskData();
+            let rows = [];
+            let header = ['Asset'].concat(HAZARDS).concat(['Composite', 'Materiality Status']);
+            rows.push(header);
+            
+            assetRisks.forEach(asset => {
+                let isMaterial = asset.composite >= 50;
+                if(materialityActive && !isMaterial) return;
+                
+                let row = [asset.name];
+                for(let h of HAZARDS) {
+                    let score = asset.hazards[h];
+                    row.push(score);
+                }
+                row.push(asset.composite);
+                row.push(isMaterial ? 'Material (≥50/100)' : 'Non-Material');
+                rows.push(row);
+            });
+            
+            // Convert to CSV with proper quoting for fields that may contain commas
+            let csv = rows.map(row => 
+                row.map(cell => {
+                    let cellStr = String(cell);
+                    if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                        return '"' + cellStr.replace(/"/g, '""') + '"';
+                    }
+                    return cellStr;
+                }).join(',')
+            ).join('\n');  // FIXED: Use actual newline character, not '\\n'
+            
+            let blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = `hazard_asset_matrix_${new Date().toISOString().slice(0,19)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Export VaR Table CSV - FIXED
+        document.getElementById('exportVarCSV').addEventListener('click', function() {
+            let assetRisks = getAssetRiskData();
+            let varValues = assetRisks.map(a => a.value * a.composite / 100);
+            let totalVaRSum = varValues.reduce((a,b)=>a+b,0);
+            let totalValue = assetRisks.reduce((s,a)=>s + a.value, 0);
+            let weightedComposite = assetRisks.reduce((s,a)=>s + a.composite * a.value, 0) / totalValue;
+            
+            let rows = [
+                ['Climate Risk Analytics Report - Export Date: ' + new Date().toLocaleString()],
+                ['Scenario: ' + (currentScenario === 'historical' ? 'Baseline 2020' : (currentScenario === 'ssp126' ? 'SSP1-2.6 (Low)' : (currentScenario === 'ssp245' ? 'SSP2-4.5 (Moderate)' : 'SSP5-8.5 (High)')))],
+                ['Period: ' + (currentPeriod === 'short' ? 'Short-term (2030)' : (currentPeriod === 'medium' ? 'Medium-term (2050)' : 'Long-term (2100)'))],
+                ['Portfolio Summary: Composite Risk = ' + weightedComposite.toFixed(1) + '/100, Total VaR = ' + totalVaRSum.toFixed(0) + ' PKR M'],
+                [],
+                ['ASSET-LEVEL VALUE AT RISK (VaR) BREAKDOWN'],
+                ['Asset Name', 'Asset Value (PKR M)', 'Composite Risk Score (0-100)', 'Physical VaR (PKR M)', '% of Portfolio VaR', 'Risk Level']
+            ];
+            
+            assetRisks.forEach((a,i) => {
+                let varAmt = varValues[i];
+                let pctOfPortfolio = (varAmt / totalVaRSum * 100).toFixed(1);
+                let riskLevel = a.composite < 20 ? 'Low' : a.composite < 40 ? 'Moderate' : a.composite < 60 ? 'Elevated' : a.composite < 80 ? 'High' : 'Extreme';
+                rows.push([
+                    a.name,
+                    a.value.toLocaleString(),
+                    a.composite,
+                    varAmt.toFixed(0),
+                    pctOfPortfolio + '%',
+                    riskLevel
+                ]);
+            });
+            
+            // Add summary row
+            rows.push([]);
+            rows.push(['PORTFOLIO SUMMARY', '', '', '', '', '']);
+            rows.push(['Total Portfolio Value', totalValue.toLocaleString() + ' PKR M', '', '', '', '']);
+            rows.push(['Total Physical VaR', totalVaRSum.toFixed(0) + ' PKR M', '', '', '', '']);
+            rows.push(['Weighted Composite Risk', weightedComposite.toFixed(1) + '/100', '', '', '', '']);
+            
+            // Convert to CSV with proper quoting
+            let csv = rows.map(row => 
+                row.map(cell => {
+                    let cellStr = String(cell);
+                    if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                        return '"' + cellStr.replace(/"/g, '""') + '"';
+                    }
+                    return cellStr;
+                }).join(',')
+            ).join('\n');  // FIXED: Use actual newline character
+            
+            let blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = `var_export_${new Date().toISOString().slice(0,19)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Roadmap
+        let milestones = [
+            { name: 'Governance Structure', pct: 30, target: 'Sep 2026' },
+            { name: 'Policy Development', pct: 20, target: 'Dec 2026' },
+            { name: 'Risk Integration', pct: 15, target: 'Jun 2027' },
+            { name: 'Staff Capacity Building', pct: 10, target: 'Dec 2027' },
+            { name: 'Full Compliance', pct: 5, target: 'Jun 2029' }
+        ];
+        document.getElementById('roadmapTracker').innerHTML = milestones.map(m => `
+            <div style="margin-bottom:0.5rem;">
+                <div style="display:flex; justify-content:space-between; font-size:0.65rem;"><span>${m.name}</span><span>${m.target}</span><span>${m.pct}%</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${m.pct}%"></div></div>
+            </div>
+        `).join('');
+        
+        // Ranking Chart
+        let sorted = [...assetRisks].sort((a,b)=>b.composite - a.composite);
+        if(rankingChart) rankingChart.destroy();
+        rankingChart = new Chart(document.getElementById('rankingChart'), {
+            type: 'bar',
+            data: { labels: sorted.map(a=>a.name), datasets: [{ label: 'Composite Risk (0-100)', data: sorted.map(a=>a.composite), backgroundColor: sorted.map(a=>getGradientColor(a.composite).bg), borderRadius: 8 }] },
+            options: { responsive: true, maintainAspectRatio: true, scales: { y: { min: 0, max: 100, title: { display: true, text: 'Risk Score' } } }, plugins: { annotation: { annotations: { line1: { type: 'line', yMin: 60, yMax: 60, borderColor: '#c62828', borderWidth: 2, borderDash: [6,6], label: { content: 'Risk Appetite (60)', enabled: true, position: 'end' } } } } } }
+        });
+        
+        // Trajectories
+        let periods = ['historical','short','medium','long'];
+        let periodLabels = ['2020', '2030', '2050', '2100'];
+        let datasets = assetRisks.map((a,i) => ({
+            label: a.name,
+            data: periods.map(p => p==='historical' ? getCompositeRisk(a.city,'historical',null) : getCompositeRisk(a.city,currentScenario,p)),
+            borderColor: `hsl(${i*90}, 60%, 45%)`,
+            backgroundColor: 'transparent',
+            borderWidth: 2.5,
+            fill: false,
+            tension: 0.2
+        }));
+        if(trajectoryChart) trajectoryChart.destroy();
+        trajectoryChart = new Chart(document.getElementById('trajectoryChart'), {
+            type: 'line', data: { labels: periodLabels, datasets },
+            options: { responsive: true, maintainAspectRatio: true, scales: { y: { min: 0, max: 100, title: { display: true, text: 'Composite Risk' } } }, plugins: { legend: { position: 'bottom', labels: { font: { size: 9 } } } } }
+        });
+        
+        // Matrix with materiality
+        let matrixHtml = `<table class="data-table"><thead><th>Asset</th>${HAZARDS.map(h=>`<th>${h}</th>`).join('')}<th>Composite</th></thead><tbody>`;
+        assetRisks.forEach(asset => {
+            if(materialityActive && asset.composite < 50) return;
+            matrixHtml += `<tr><td style="font-weight:600;">${asset.name}</td>`;
+            for(let h of HAZARDS) {
+                let score = asset.hazards[h];
+                let color = getGradientColor(score);
+                matrixHtml += `<td style="background:${color.light}; font-weight:600;">${score}</td>`;
+            }
+            matrixHtml += `<td style="background:${getGradientColor(asset.composite).light}; font-weight:800;">${asset.composite}</td></tr>`;
+        });
+        matrixHtml += `</tbody>`;
+        document.getElementById('matrixContainer').innerHTML = matrixHtml;
+        
+        // Map
+        if(!mapInstance) {
+            mapInstance = L.map('mapContainer').setView([30.3753, 69.3451], 6);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>' }).addTo(mapInstance);
+        }
+        currentMarkers.forEach(m => mapInstance.removeLayer(m));
+        currentMarkers = [];
+        assetRisks.forEach(asset => {
+            let radius = 8 + (asset.value / 200);
+            let color = getGradientColor(asset.composite);
+            let marker = L.circleMarker([asset.lat, asset.lng], { radius: radius, fillColor: color.bg, color: '#fff', weight: 2, fillOpacity: 0.85 });
+            marker.bindPopup(`<b>${asset.name}</b><br>Risk: ${asset.composite}/100<br>VaR: ${(asset.value*asset.composite/100).toFixed(0)} PKR M<br><button onclick="showAssetDetails(${asset.id})" style="margin-top:5px; padding:2px 8px; font-size:10px;">📊 See Details</button>`);
+            marker.on('click', () => showAssetDetails(asset.id));
+            marker.addTo(mapInstance);
+            currentMarkers.push(marker);
+        });
+        
+        // Risk Change View
+        updateChangeView(assetRisks, totalValue);
+        
+        // VaR View
+        updateVarView(assetRisks);
+    }
+    
+    function updateChangeView(assetRisks, totalValue) {
+        let scenarios = ['historical','ssp126','ssp245','ssp585'];
+        let labels = ['2020 Baseline', 'SSP1-2.6', 'SSP2-4.5', 'SSP5-8.5'];
+        let values = scenarios.map(sc => assetRisks.reduce((s,a)=>s + getCompositeRisk(a.city, sc, sc==='historical'?null:currentPeriod)*a.value,0)/totalValue);
+        let baseline = values[0];
+        let pctChanges = values.map(v => ((v-baseline)/baseline*100));
+        
+        let container = document.getElementById('changeViewContainer');
+        container.innerHTML = '';
+        
+        if(changeView === 'chart') {
+            let canvas = document.createElement('canvas'); canvas.height = 180; container.appendChild(canvas);
+            if(changeChart) changeChart.destroy();
+            changeChart = new Chart(canvas, {
+                type: 'bar',
+                data: { labels, datasets: [
+                    { label: 'Composite Risk Score', data: values, backgroundColor: '#1e6f5c', borderRadius: 8, yAxisID: 'y', order: 2 },
+                    { label: 'Percent Change from Baseline', data: pctChanges, type: 'line', borderColor: '#c62828', backgroundColor: 'transparent', borderWidth: 3, fill: false, yAxisID: 'y1', tension: 0.2, pointRadius: 5, pointBackgroundColor: '#c62828', order: 1 }
+                ] },
+                options: { responsive: true, maintainAspectRatio: true, scales: { y: { min: 0, max: 100, title: { display: true, text: 'Risk Score' } }, y1: { position: 'right', title: { display: true, text: 'Percent Change (%)' }, grid: { drawOnChartArea: false } } }, plugins: { tooltip: { callbacks: { label: (ctx) => ctx.dataset.label === 'Percent Change from Baseline' ? `${ctx.raw.toFixed(1)}%` : `${ctx.raw.toFixed(0)}/100` } } } }
+            });
+        } else {
+            container.innerHTML = `<table class="data-table"><thead><th>Scenario</th><th>Composite Risk</th><th>Change from Baseline</th></thead><tbody>${labels.map((l,i)=>`<td><td style="font-weight:600;">${l}</td><td>${Math.round(values[i])}/100</td><td class="${pctChanges[i]>0?'trend-up':''}">${pctChanges[i]>0?'+':''}${pctChanges[i].toFixed(1)}%</td></tr>`).join('')}</tbody>`;
+        }
+    }
+    
+    function updateVarView(assetRisks) {
+        let varValues = assetRisks.map(a => a.value * a.composite / 100);
+        let totalVaRSum = varValues.reduce((a,b)=>a+b,0);
+        let container = document.getElementById('varViewContainer');
+        container.innerHTML = '';
+        
+        if(varView === 'chart') {
+            let canvas = document.createElement('canvas'); canvas.height = 200; container.appendChild(canvas);
+            if(varChart) varChart.destroy();
+            varChart = new Chart(canvas, {
+                type: 'bar',
+                data: { labels: assetRisks.map(a=>a.name), datasets: [{ label: 'Physical VaR (PKR Millions)', data: varValues, backgroundColor: varValues.map(v => getGradientColor(Math.min(100, v/20)).bg), borderRadius: 8 }] },
+                options: { responsive: true, maintainAspectRatio: true, scales: { y: { title: { display: true, text: 'PKR Millions' }, beginAtZero: true } }, plugins: { tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toFixed(0)} PKR M (${(ctx.raw/totalVaRSum*100).toFixed(1)}% of portfolio)` } } } }
+            });
+        } else {
+            container.innerHTML = `<table class="data-table"><thead><th>Asset</th><th>Value (PKR M)</th><th>Risk Score</th><th>Physical VaR (PKR M)</th><th>% of Portfolio</th></thead><tbody>${assetRisks.map((a,i)=>`<tr><td style="font-weight:600;">${a.name}</td><td>${a.value.toLocaleString()}</td><td>${a.composite}/100</td><td style="color:#c62828; font-weight:700;">${varValues[i].toFixed(0)}</td><td>${(varValues[i]/totalVaRSum*100).toFixed(1)}%</td></tr>`).join('')}</tbody>`;
+        }
+    }
+    
+    function showAssetDetails(assetId) {
+        let asset = assets.find(a => a.id === assetId);
+        if(!asset) return;
+        let composite = getCompositeRisk(asset.city, currentScenario, currentPeriod);
+        let varAmount = asset.value * composite / 100;
+        let hazardsHtml = '';
+        for(let i=0; i<HAZARDS.length; i++) {
+            let score = getHazardScore(asset.city, HAZARD_KEYS[i], currentScenario, currentPeriod);
+            let color = getGradientColor(score);
+            let status = getHazardStatus(score);
+            hazardsHtml += `<div style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0; border-bottom:1px solid #eef2f8;">
+                <span><strong>${HAZARDS[i]}</strong></span>
+                <div style="display:flex; align-items:center; gap:0.8rem;">
+                    <span style="background:${color.light}; padding:0.2rem 0.6rem; border-radius:1rem; font-weight:600;">${score}/100</span>
+                    <span class="risk-badge ${status.class}" style="font-size:0.6rem;">${status.text}</span>
+                </div>
+            </div>`;
+        }
+        let scenarioName = currentScenario==='historical'?'Baseline 2020':(currentScenario==='ssp126'?'SSP1-2.6 (Low)':(currentScenario==='ssp245'?'SSP2-4.5 (Moderate)':'SSP5-8.5 (High)'));
+        let periodName = currentPeriod==='short'?'Short-term (2030)':(currentPeriod==='medium'?'Medium-term (2050)':'Long-term (2100)');
+        
+        document.getElementById('modalContent').innerHTML = `
+            <h3><i class="fas fa-building"></i> ${asset.name}</h3>
+            <div class="kpi-row" style="margin:1rem 0;">
+                <div class="kpi-card"><div class="kpi-value">${composite}/100</div><div class="kpi-label">Composite Risk</div><div id="modalGauge" class="gauge-container" style="margin-top:0.5rem;"></div></div>
+                <div class="kpi-card"><div class="kpi-value">${varAmount.toFixed(0)} PKR M</div><div class="kpi-label">Physical VaR</div></div>
+            </div>
+            <p><strong>📍 Location:</strong> ${asset.lat}, ${asset.lng}</p>
+            <p><strong>💰 Asset Value:</strong> PKR ${asset.value.toLocaleString()} Million</p>
+            <p><strong>📊 Scenario Context:</strong> ${scenarioName} / ${periodName}</p>
+            <div style="margin:1rem 0;"><strong><i class="fas fa-chart-line"></i> Hazard Breakdown (with status):</strong><div style="margin-top:0.5rem;">${hazardsHtml}</div></div>
+            <div><strong><i class="fas fa-map-marker-alt"></i> Zoomed Location Map:</strong><div id="detailMap" style="height:200px; border-radius:0.8rem; margin-top:0.5rem;"></div></div>
+            <div class="footnote" style="margin-top:1rem;">VaR = Asset Value × (Risk Score / 100). Represents potential climate-driven financial loss.</div>
+        `;
+        document.getElementById('assetModal').style.display = 'flex';
+        
+        setTimeout(() => {
+            updateGauge('modalGauge', composite);
+            let detailMap = L.map('detailMap').setView([asset.lat, asset.lng], 10);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(detailMap);
+            let color = getGradientColor(composite);
+            L.circleMarker([asset.lat, asset.lng], { radius: 12, fillColor: color.bg, color: '#fff', weight: 2, fillOpacity: 0.9 }).addTo(detailMap).bindPopup(asset.name).openPopup();
+        }, 100);
+    }
+    
+    function closeModal() { document.getElementById('assetModal').style.display = 'none'; }
+    
+    // Initialize materiality toggle
+    let materialityDiv = document.getElementById('materialityToggle');
+    let knob = document.createElement('div');
+    knob.style.position = 'absolute';
+    knob.style.width = '16px';
+    knob.style.height = '16px';
+    knob.style.background = 'white';
+    knob.style.borderRadius = '50%';
+    knob.style.top = '2px';
+    knob.style.left = '2px';
+    knob.style.transition = '0.2s';
+    materialityDiv.appendChild(knob);
+    materialityDiv.addEventListener('click', () => {
+        materialityActive = !materialityActive;
+        materialityDiv.style.background = materialityActive ? '#1e6f5c' : '#ccc';
+        knob.style.left = materialityActive ? '22px' : '2px';
+        document.getElementById('materialityLabel').innerText = materialityActive ? 'Material only (≥50)' : 'Show all';
+        updateAll();
+    });
+    
+    // Toggle button handlers
+    document.querySelectorAll('.toggle-btn[data-group="change"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            changeView = btn.dataset.view;
+            document.querySelectorAll('.toggle-btn[data-group="change"]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            updateAll();
+        });
+    });
+    document.querySelectorAll('.toggle-btn[data-group="var"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            varView = btn.dataset.view;
+            document.querySelectorAll('.toggle-btn[data-group="var"]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            updateAll();
+        });
+    });
+    
+    // Scenario handlers for redesigned section
+    document.querySelectorAll('.scenario-option[data-scenario]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.scenario-option[data-scenario]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentScenario = btn.dataset.scenario;
+            updateAll();
+        });
+    });
+    document.querySelectorAll('.period-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.period-option').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            let text = btn.innerText;
+            if(text.includes('2030')) currentPeriod = 'short';
+            else if(text.includes('2050')) currentPeriod = 'medium';
+            else if(text.includes('2100')) currentPeriod = 'long';
+            updateAll();
+        });
+    });
+    
+    document.getElementById('stressSeverity').addEventListener('change', () => updateAll());
+    document.getElementById('addAssetBtn').addEventListener('click', () => {
+        let name = document.getElementById('assetName').value.trim();
+        let lat = parseFloat(document.getElementById('assetLat').value);
+        let lng = parseFloat(document.getElementById('assetLng').value);
+        let value = parseFloat(document.getElementById('assetValue').value);
+        if(!name || isNaN(lat) || isNaN(lng) || isNaN(value) || value<=0 || lat<23.5 || lat>37.5 || lng<60 || lng>78) {
+            alert('Valid Pakistan coordinates required (lat 23.5-37.5, lng 60-78) and positive value');
+            return;
+        }
+        let nearestCity = Object.keys(cityData).reduce((a,b)=>Math.hypot(lat-cityData[a].lat, lng-cityData[a].lng) < Math.hypot(lat-cityData[b].lat, lng-cityData[b].lng) ? a : b);
+        assets.push({ id: nextId++, name, city: nearestCity, lat, lng, value });
+        updateAssetList();
+        updateAll();
+        document.getElementById('assetName').value = '';
+        document.getElementById('assetLat').value = '';
+        document.getElementById('assetLng').value = '';
+        document.getElementById('assetValue').value = '';
+    });
+    
+    function updateAssetList() {
+        document.getElementById('assetList').innerHTML = assets.map((a,i)=>`
+            <div class="asset-item"><span><b>${a.name}</b> | ${a.lat}, ${a.lng} | PKR ${a.value}M</span><button onclick="assets.splice(${i},1); updateAssetList(); updateAll();"><i class="fas fa-trash"></i></button></div>
+        `).join('');
+    }
+    
+    window.showAssetDetails = showAssetDetails;
+    window.closeModal = closeModal;
+    window.exportToPDF = () => {
+        document.getElementById('assetModal').style.display = 'none';
+        setTimeout(() => {
+            const dashboard = document.getElementById('dashboardContainer');
+            const opt = {
+                margin:       [0.2, 0.2, 0.2, 0.2], // top, left, bottom, right (in inches)
+                filename:     'climate-risk-report.pdf',
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'in', format: 'a3', orientation: 'landscape' },
+                pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+            html2pdf().set(opt).from(dashboard).save();
+        }, 200);
+    };
+    
+    updateAssetList();
+    updateAll();
+</script>
+</body>
+</html>

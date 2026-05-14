@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { downloadCsv, parseCsvText } from "@/lib/csv";
-import { HAZARD_LABELS, calculateCompositeRisk, roundToDecimals } from "@/lib/risk";
+import { HAZARD_LABELS, getCompositeRisk, roundToDecimals } from "@/lib/risk";
 import type { HazardKey } from "@/types/branch";
 
 const hazardKeys: HazardKey[] = ["flood", "heatwave", "drought", "urban_flood", "extreme_rain"];
@@ -20,10 +20,10 @@ const chartTooltipStyle = {
 };
 
 function cellColor(value: number) {
-  if (value <= 20) return "bg-green-500/22 text-green-100";
-  if (value <= 40) return "bg-yellow-500/28 text-yellow-50";
-  if (value <= 60) return "bg-orange-500/32 text-orange-50";
-  if (value <= 80) return "bg-red-500/36 text-red-50";
+  if (value < 20) return "bg-green-500/22 text-green-100";
+  if (value < 40) return "bg-yellow-500/28 text-yellow-50";
+  if (value < 60) return "bg-orange-500/32 text-orange-50";
+  if (value < 80) return "bg-red-500/36 text-red-50";
   return "bg-red-700/45 text-red-50";
 }
 
@@ -136,7 +136,7 @@ export default function HazardMatrixPage() {
                     branch.id,
                     branch.name,
                     ...hazardKeys.map((hazard) => String(roundToDecimals(branch.hazards[hazard]))),
-                    String(roundToDecimals(calculateCompositeRisk(branch))),
+                    String(roundToDecimals(getCompositeRisk(branch))),
                   ]),
                 ])
               }
@@ -163,7 +163,7 @@ export default function HazardMatrixPage() {
               </thead>
               <tbody>
                 {branches.map((branch) => {
-                  const rowComposite = calculateCompositeRisk(branch);
+                  const rowComposite = getCompositeRisk(branch);
                   return (
                     <tr key={branch.id} className="border-b">
                       <td className="p-2">{branch.name}</td>

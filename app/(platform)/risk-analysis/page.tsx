@@ -5,7 +5,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { useBranchStore } from "@/components/dashboard/branch-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { average, buildRiskTrajectory } from "@/lib/risk";
+import { buildRiskTrajectory, getPortfolioValueWeightedCompositeRisk } from "@/lib/risk";
 
 const toMax3Decimals = (value: number) => Number(value.toFixed(3)).toString();
 const chartTooltipStyle = {
@@ -22,10 +22,10 @@ export default function RiskAnalysisPage() {
   const selectedBranch = branches.find((branch) => branch.id === selectedId) ?? branches[0];
 
   const trajectory = [
-    { year: "2020", portfolio: average(branches.map((b) => b.risk_scores.baseline)) },
-    { year: "2030", portfolio: average(branches.map((b) => b.risk_scores.short_term)) },
-    { year: "2050", portfolio: average(branches.map((b) => b.risk_scores.medium_term)) },
-    { year: "2100", portfolio: average(branches.map((b) => b.risk_scores.long_term)) },
+    { year: "2020", portfolio: getPortfolioValueWeightedCompositeRisk(branches, (b) => b.risk_scores.baseline) },
+    { year: "2030", portfolio: getPortfolioValueWeightedCompositeRisk(branches, (b) => b.risk_scores.short_term) },
+    { year: "2050", portfolio: getPortfolioValueWeightedCompositeRisk(branches, (b) => b.risk_scores.medium_term) },
+    { year: "2100", portfolio: getPortfolioValueWeightedCompositeRisk(branches, (b) => b.risk_scores.long_term) },
   ];
 
   const scenarioData = trajectory.map((point) => ({

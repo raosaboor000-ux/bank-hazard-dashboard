@@ -43,29 +43,37 @@ export function toCompactCurrency(value: number) {
   return `${sign}Rs ${abs.toFixed(2).replace(/\.?0+$/, "")}`;
 }
 
-export function calculateCompositeRisk(branch: Branch) {
+/**
+ * Composite risk score R from branch hazard vector (AIGeo reference: R = round(Σ h_k / K), K = number of hazards).
+ */
+export function getCompositeRisk(branch: Branch): number {
   const values = Object.values(branch.hazards);
-  return roundToDecimals(values.reduce((acc, current) => acc + current, 0) / values.length);
+  if (!values.length) return 0;
+  const sumHazards = values.reduce((acc, h) => acc + h, 0);
+  return Math.round(sumHazards / values.length);
 }
 
 export function getRiskCategory(score: number) {
-  if (score <= 20) return "Low";
-  if (score <= 40) return "Moderate";
-  if (score <= 60) return "Elevated";
-  if (score <= 80) return "High";
+  if (score < 20) return "Low";
+  if (score < 40) return "Moderate";
+  if (score < 60) return "Elevated";
+  if (score < 80) return "High";
   return "Extreme";
 }
 
 export function getRiskColor(score: number) {
-  if (score <= 20) return "#16a34a";
-  if (score <= 40) return "#ca8a04";
-  if (score <= 60) return "#ea580c";
-  if (score <= 80) return "#dc2626";
+  if (score < 20) return "#16a34a";
+  if (score < 40) return "#ca8a04";
+  if (score < 60) return "#ea580c";
+  if (score < 80) return "#dc2626";
   return "#991b1b";
 }
 
-export function calculateVaR(assetValue: number, riskScore: number) {
-  return roundToDecimals(assetValue * (riskScore / 100));
+/**
+ * Physical VaR in PKR (AIGeo reference): VaR = V × (R / 100), where V = asset value, R = composite risk 0–100.
+ */
+export function physicalVarPkr(V: number, R: number) {
+  return roundToDecimals(V * (R / 100));
 }
 
 export function buildRiskTrajectory(branch: Branch) {
@@ -82,11 +90,23 @@ export function average(values: number[]) {
   return roundToDecimals(values.reduce((acc, item) => acc + item, 0) / values.length);
 }
 
+/**
+ * Portfolio weightedComposite (AIGeo reference): weightedComposite = Σ (R_i × V_i) / Σ V_i.
+ * Here R_i is supplied per branch (e.g. baseline or horizon score from `risk_scores`).
+ */
+export function getPortfolioValueWeightedCompositeRisk(branches: Branch[], branchRiskScore: (branch: Branch) => number): number {
+  if (!branches.length) return 0;
+  const totalValue = branches.reduce((s, b) => s + b.asset_value, 0);
+  if (totalValue <= 0) return 0;
+  const weightedComposite = branches.reduce((s, b) => s + branchRiskScore(b) * b.asset_value, 0) / totalValue;
+  return roundToDecimals(weightedComposite);
+}
+
 /** Shared IPCC + horizon model used for portfolio summary, VaR, matrix scaling, and maps. */
-export type IpcgScenarioId = "historical" | "ssp1-2.6" | "ssp2-4.5" | "ssp5-8.5";
+export type IpccScenarioId = "historical" | "ssp1-2.6" | "ssp2-4.5" | "ssp5-8.5";
 export type TimeHorizonId = "short" | "medium" | "long";
 
-const SSP_MULTIPLIER: Record<Exclude<IpcgScenarioId, "historical">, number> = {
+const SSP_MULTIPLIER: Record<Exclude<IpccScenarioId, "historical">, number> = {
   "ssp1-2.6": 0.92,
   "ssp2-4.5": 1.08,
   "ssp5-8.5": 1.26,
@@ -99,56 +119,91 @@ const HORIZON_WEIGHT: Record<TimeHorizonId, number> = {
 };
 
 /**
- * One branch-level risk score (0–100) for the selected scenario/period.
- * - Historical: SBP 2020 baseline (stored as `risk_scores.baseline`).
- * - Future SSP: hazard composite × IPCC scenario multiplier × time-horizon weight (capped at 100).
+ * Branch-level composite risk R_i for the selected IPCC scenario and time horizon.
+ * - Historical: R_i = baseline (2020) score from data (`risk_scores.baseline`).
+ * - Future SSP: CSV has a single hazard vector; AIGeo HTML uses full per-scenario hazard tables.
+ *   Here R_i ≈ min(100, max(0, R_base × m_SSP × w_horizon)) with R_base = getCompositeRisk(branch).
  */
-export function getBranchScenarioRiskScore(branch: Branch, scenario: IpcgScenarioId, horizon: TimeHorizonId): number {
+export function getBranchScenarioRiskScore(branch: Branch, scenario: IpccScenarioId, horizon: TimeHorizonId): number {
   if (scenario === "historical") {
     return roundToDecimals(Math.min(100, Math.max(0, branch.risk_scores.baseline)));
   }
-  const base = calculateCompositeRisk(branch);
-  const m = SSP_MULTIPLIER[scenario];
-  const w = HORIZON_WEIGHT[horizon];
-  return roundToDecimals(Math.min(100, base * m * w));
+  const R_base = getCompositeRisk(branch);
+  const mSSP = SSP_MULTIPLIER[scenario];
+  const wHorizon = HORIZON_WEIGHT[horizon];
+  return roundToDecimals(Math.min(100, Math.max(0, R_base * mSSP * wHorizon)));
 }
 
-/** Value-weighted average portfolio risk (0–100), consistent with the HTML reference dashboard. */
-export function getPortfolioWeightedComposite(
-  branches: Branch[],
-  scenario: IpcgScenarioId,
-  horizon: TimeHorizonId,
-): number {
-  if (!branches.length) return 0;
-  const totalValue = branches.reduce((a, b) => a + b.asset_value, 0);
-  if (totalValue <= 0) return 0;
-  return roundToDecimals(
-    branches.reduce((s, b) => s + getBranchScenarioRiskScore(b, scenario, horizon) * b.asset_value, 0) / totalValue,
-  );
+/** Portfolio weightedComposite using `getBranchScenarioRiskScore` for each branch (AIGeo: Σ R_i V_i / Σ V_i). */
+export function getPortfolioWeightedComposite(branches: Branch[], scenario: IpccScenarioId, horizon: TimeHorizonId): number {
+  return getPortfolioValueWeightedCompositeRisk(branches, (b) => getBranchScenarioRiskScore(b, scenario, horizon));
 }
 
-/** Physical VaR = asset value × (scenario risk / 100). */
-export function getBranchPhysicalVaR(branch: Branch, scenario: IpcgScenarioId, horizon: TimeHorizonId) {
-  return calculateVaR(branch.asset_value, getBranchScenarioRiskScore(branch, scenario, horizon));
+/** One row of the AIGeo-style Risk Change chart (baseline vs SSPs at a fixed horizon). */
+export type PortfolioRiskChangePoint = {
+  scenarioId: IpccScenarioId;
+  label: string;
+  /** Value-weighted mean composite risk (0–100). */
+  composite: number;
+  /** Percent change vs 2020 historical baseline; baseline row is 0. */
+  pctFromBaseline: number;
+};
+
+/**
+ * Portfolio risk change vs 2020 baseline (AIGeo `updateChangeView`): value-weighted composite
+ * for historical then each SSP, all SSPs using the same `horizon`. Baseline uses stored 2020 scores
+ * (`getPortfolioWeightedComposite(..., "historical", ...)` — horizon ignored for historical).
+ */
+export function getPortfolioRiskChangeSeries(branches: Branch[], horizon: TimeHorizonId): PortfolioRiskChangePoint[] {
+  const scenarios: IpccScenarioId[] = ["historical", "ssp1-2.6", "ssp2-4.5", "ssp5-8.5"];
+  const labels = ["2020 Baseline", "SSP1-2.6", "SSP2-4.5", "SSP5-8.5"];
+  const values = scenarios.map((sc) => getPortfolioWeightedComposite(branches, sc, sc === "historical" ? "short" : horizon));
+  const baseline = values[0];
+  return scenarios.map((scenarioId, i) => ({
+    scenarioId,
+    label: labels[i],
+    composite: values[i],
+    pctFromBaseline: roundToDecimals(baseline === 0 ? 0 : ((values[i] - baseline) / baseline) * 100),
+  }));
 }
 
-export function getTotalPortfolioPhysicalVaR(branches: Branch[], scenario: IpcgScenarioId, horizon: TimeHorizonId) {
-  return roundToDecimals(
-    branches.reduce((acc, b) => acc + getBranchPhysicalVaR(b, scenario, horizon), 0),
-  );
+/** Physical VaR for one branch: VaR_i = V_i × (R_i / 100). */
+export function getBranchPhysicalVaR(branch: Branch, scenario: IpccScenarioId, horizon: TimeHorizonId) {
+  const V = branch.asset_value;
+  const R = getBranchScenarioRiskScore(branch, scenario, horizon);
+  return physicalVarPkr(V, R);
+}
+
+/** Total physical VaR: Σ_i VaR_i (AIGeo reference portfolio sum). */
+export function getTotalPortfolioPhysicalVaR(branches: Branch[], scenario: IpccScenarioId, horizon: TimeHorizonId) {
+  return roundToDecimals(branches.reduce((acc, b) => acc + getBranchPhysicalVaR(b, scenario, horizon), 0));
 }
 
 /**
- * Scale raw hazard values so the row’s composite matches `getBranchScenarioRiskScore` under the current selection.
+ * Scale raw hazard h_ik so the row’s composite matches scenario R_i under the current selection:
+ * h_ik_scaled = h_ik × (R_i / R_base), R_base = getCompositeRisk(branch).
  */
-export function getScaledHazard(branch: Branch, hazardKey: HazardKey, scenario: IpcgScenarioId, horizon: TimeHorizonId): number {
-  const target = getBranchScenarioRiskScore(branch, scenario, horizon);
-  const base = calculateCompositeRisk(branch) || 1;
-  return roundToDecimals(
-    Math.min(100, Math.max(0, (branch.hazards[hazardKey] * target) / base)),
-  );
+export function getScaledHazard(branch: Branch, hazardKey: HazardKey, scenario: IpccScenarioId, horizon: TimeHorizonId): number {
+  const R_i = getBranchScenarioRiskScore(branch, scenario, horizon);
+  const R_base = getCompositeRisk(branch) || 1;
+  return roundToDecimals(Math.min(100, Math.max(0, (branch.hazards[hazardKey] * R_i) / R_base)));
 }
 
 export function varToMillionsPkrLabel(totalPkr: number) {
   return Math.round(totalPkr / 1_000_000).toLocaleString("en-PK");
+}
+
+/** Stressed VaR (AIGeo): stressedVaR = totalVaR × multiplier. */
+export function getStressedPhysicalVarPkr(totalPhysicalVarPkr: number, stressMultiplier: number) {
+  return roundToDecimals(totalPhysicalVarPkr * stressMultiplier);
+}
+
+/** Projected CAR % under stress (AIGeo Climate Stress Test card): max(5, 18 − (multiplier − 1) × 5). */
+export function getProjectedCarPercent(stressMultiplier: number) {
+  return roundToDecimals(Math.max(5, 18 - (stressMultiplier - 1) * 5));
+}
+
+/** Projected LCR % under stress (AIGeo): max(60, 150 − (multiplier − 1) × 40). */
+export function getProjectedLcrPercent(stressMultiplier: number) {
+  return roundToDecimals(Math.max(60, 150 - (stressMultiplier - 1) * 40));
 }

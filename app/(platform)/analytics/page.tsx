@@ -2,7 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, CalendarDays, Download, Gauge, Globe2, LineChart as LineChartIcon, ShieldCheck, Upload } from "lucide-react";
+import { AlertTriangle, CalendarDays, Download, Gauge, LineChart as LineChartIcon, ShieldCheck, Upload } from "lucide-react";
+import { AnalyticsScenarioHorizonPanel } from "@/components/dashboard/analytics-scenario-horizon-panel";
 import { useBranchStore } from "@/components/dashboard/branch-store";
 import { RiskGauge } from "@/components/dashboard/risk-gauge";
 import { useScenario } from "@/components/dashboard/scenario-context";
@@ -10,27 +11,32 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { downloadCsv, parseCsvText } from "@/lib/csv";
-import { average, getBranchPhysicalVaR, getBranchScenarioRiskScore, getPortfolioWeightedComposite, getRiskCategory, getScaledHazard, getTotalPortfolioPhysicalVaR, HAZARD_LABELS, roundToDecimals, toCompactCurrency, varToMillionsPkrLabel, type IpcgScenarioId, type TimeHorizonId } from "@/lib/risk";
+import { horizonLabelHyphenated, scenarioLabel } from "@/lib/ipcc-scenarios";
+import {
+  getBranchPhysicalVaR,
+  getBranchScenarioRiskScore,
+  getPortfolioValueWeightedCompositeRisk,
+  getPortfolioWeightedComposite,
+  getProjectedCarPercent,
+  getProjectedLcrPercent,
+  getRiskCategory,
+  getScaledHazard,
+  getStressedPhysicalVarPkr,
+  getTotalPortfolioPhysicalVaR,
+  HAZARD_LABELS,
+  roundToDecimals,
+  toCompactCurrency,
+  varToMillionsPkrLabel,
+} from "@/lib/risk";
 import type { HazardKey } from "@/types/branch";
 
 const hazardKeys: HazardKey[] = ["flood", "heatwave", "drought", "urban_flood", "extreme_rain"];
 
-const FUTURE_SCENARIOS = [
-  { id: "ssp1-2.6" as const, label: "SSP1-2.6", subtitle: "Low emissions", warming: "+1.5C" },
-  { id: "ssp2-4.5" as const, label: "SSP2-4.5", subtitle: "Moderate emissions", warming: "+2.7C" },
-  { id: "ssp5-8.5" as const, label: "SSP5-8.5", subtitle: "High emissions", warming: "+4.4C" },
-];
-
-const HORIZONS = [
-  { id: "short" as const, label: "Short-term (2030)" },
-  { id: "medium" as const, label: "Medium-term (2050)" },
-  { id: "long" as const, label: "Long-term (2100)" },
-];
-
+/** Stress severity multiplier m (AIGeo: Stressed VaR = totalVaR × m). */
 const stressOptions = [
-  { id: "once-100", label: "1-in-100 year (Severe)", varLift: 1.8, carFloor: 11.5, lcrFloor: 100 },
-  { id: "once-50", label: "1-in-50 year (Extreme)", varLift: 2.2, carFloor: 10.8, lcrFloor: 95 },
-  { id: "compound", label: "Compound heat + flood", varLift: 2.6, carFloor: 10.0, lcrFloor: 92 },
+  { id: "once-100", label: "1-in-100 year (Severe)", varLift: 1.8 },
+  { id: "once-50", label: "1-in-50 year (Extreme)", varLift: 2.2 },
+  { id: "compound", label: "1-in-200 years (Extreme)", varLift: 2.6 },
 ] as const;
 
 const roadmap = [
@@ -41,21 +47,11 @@ const roadmap = [
   { name: "Full Compliance", due: "Jun 2029", progress: 5 },
 ];
 
-function scenarioLabel(id: IpcgScenarioId) {
-  if (id === "historical") return "Baseline 2020 (Historical)";
-  const s = FUTURE_SCENARIOS.find((x) => x.id === id);
-  return s ? s.label : id;
-}
-
-function horizonLabel(id: TimeHorizonId) {
-  return HORIZONS.find((x) => x.id === id)?.label ?? id;
-}
-
 function cellColor(value: number) {
-  if (value <= 20) return "bg-green-500/22 text-green-100";
-  if (value <= 40) return "bg-yellow-500/28 text-yellow-50";
-  if (value <= 60) return "bg-orange-500/32 text-orange-50";
-  if (value <= 80) return "bg-red-500/36 text-red-50";
+  if (value < 20) return "bg-green-500/22 text-green-100";
+  if (value < 40) return "bg-yellow-500/28 text-yellow-50";
+  if (value < 60) return "bg-orange-500/32 text-orange-50";
+  if (value < 80) return "bg-red-500/36 text-red-50";
   return "bg-red-700/45 text-red-50";
 }
 
@@ -75,7 +71,7 @@ const chartTooltipStyle = {
 
 export default function AnalyticsPage() {
   const { branches, updateBranch } = useBranchStore();
-  const { scenarioId, horizonId, setScenarioId, setHorizonId } = useScenario();
+  const { scenarioId, horizonId } = useScenario();
   const [stressId, setStressId] = useState<(typeof stressOptions)[number]["id"]>("once-100");
   const [selectedId, setSelectedId] = useState(branches[0]?.id ?? "");
   const [varView, setVarView] = useState<"chart" | "table">("chart");
@@ -88,9 +84,9 @@ export default function AnalyticsPage() {
 
   const compositeRisk = getPortfolioWeightedComposite(branches, scenarioId, eff);
   const totalVaR = getTotalPortfolioPhysicalVaR(branches, scenarioId, eff);
-  const stressedVaR = roundToDecimals(totalVaR * stress.varLift);
-  const projectedCar = roundToDecimals(Math.max(stress.carFloor, 15.8 - (stress.varLift - 1) * 2.2));
-  const projectedLcr = roundToDecimals(Math.max(stress.lcrFloor, 132 - (stress.varLift - 1) * 20));
+  const stressedVaR = getStressedPhysicalVarPkr(totalVaR, stress.varLift);
+  const projectedCar = getProjectedCarPercent(stress.varLift);
+  const projectedLcr = getProjectedLcrPercent(stress.varLift);
 
   const varData = useMemo(
     () =>
@@ -111,10 +107,10 @@ export default function AnalyticsPage() {
     : [];
 
   const trajectory = [
-    { year: "2020", portfolio: average(branches.map((b) => b.risk_scores.baseline)) },
-    { year: "2030", portfolio: average(branches.map((b) => b.risk_scores.short_term)) },
-    { year: "2050", portfolio: average(branches.map((b) => b.risk_scores.medium_term)) },
-    { year: "2100", portfolio: average(branches.map((b) => b.risk_scores.long_term)) },
+    { year: "2020", portfolio: getPortfolioValueWeightedCompositeRisk(branches, (b) => b.risk_scores.baseline) },
+    { year: "2030", portfolio: getPortfolioValueWeightedCompositeRisk(branches, (b) => b.risk_scores.short_term) },
+    { year: "2050", portfolio: getPortfolioValueWeightedCompositeRisk(branches, (b) => b.risk_scores.medium_term) },
+    { year: "2100", portfolio: getPortfolioValueWeightedCompositeRisk(branches, (b) => b.risk_scores.long_term) },
   ];
 
   const handleHazardImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,10 +181,16 @@ export default function AnalyticsPage() {
         <h2 className="section-title">Analytics</h2>
       </header>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <Card className="hover-lift">
-          <CardHeader className="border-b pb-4">
-            <CardTitle className="flex items-center gap-2"><LineChartIcon className="size-5" /> Portfolio Summary</CardTitle>
+      <section className="grid items-stretch gap-4 lg:grid-cols-2">
+        <Card className="hover-lift border-white/20 bg-white/30 dark:border-white/10 dark:bg-white/[0.06]">
+          <CardHeader className="border-b border-white/15 pb-4 dark:border-white/10">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <LineChartIcon className="size-5" />
+              Portfolio Summary
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Metrics update from the Scenario & Horizon panel on this page. Same selection applies across Dashboard and Portfolio.
+            </p>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
             <div className="rounded-xl border border-white/20 bg-white/20 p-4 text-center dark:border-white/10 dark:bg-white/5">
@@ -203,56 +205,18 @@ export default function AnalyticsPage() {
               <p className="text-muted-foreground">Physical VaR (PKR M)</p>
             </div>
             <p className="text-sm text-muted-foreground">
-              Current: {scenarioLabel(scenarioId)}
-              {isHistorical ? " · Reference year 2020" : ` / ${horizonLabel(horizonId)}`}
+              Current:{" "}
+              {isHistorical
+                ? "Reference Period (2020)"
+                : `${scenarioLabel(scenarioId)} / ${horizonLabelHyphenated(horizonId)}`}
             </p>
-            <p className="text-sm font-semibold">Portfolio: {getRiskCategory(compositeRisk)} Risk ({Math.round(compositeRisk)}/100)</p>
+            <p className="text-sm font-semibold">
+              Portfolio: {getRiskCategory(compositeRisk)} Risk ({Math.round(compositeRisk)}/100)
+            </p>
           </CardContent>
         </Card>
 
-        <Card className="hover-lift">
-          <CardHeader className="border-b pb-4">
-            <CardTitle className="flex items-center gap-2"><Globe2 className="size-5" /> Scenario & Horizon</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            <div className="rounded-xl border border-white/20 bg-white/20 p-4 dark:border-white/10 dark:bg-white/5">
-              <button type="button" onClick={() => setScenarioId("historical")} className={`w-full rounded-xl p-3 text-center text-sm font-semibold transition ${isHistorical ? "bg-emerald-700 text-white" : "bg-slate-200/35 dark:bg-slate-700/40"}`}>
-                Reference Period (2020)
-              </button>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {FUTURE_SCENARIOS.map((item) => (
-                <button
-                  type="button"
-                  key={item.id}
-                  onClick={() => setScenarioId(item.id as IpcgScenarioId)}
-                  className={`rounded-xl p-3 text-left transition ${
-                    !isHistorical && scenarioId === item.id ? "bg-emerald-700 text-white" : "bg-slate-200/35 dark:bg-slate-700/40"
-                  }`}
-                >
-                  <p className="font-bold">{item.label}</p>
-                  <p className="text-sm opacity-85">{item.subtitle}</p>
-                  <p className="text-sm opacity-85">{item.warming}</p>
-                </button>
-              ))}
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {HORIZONS.map((item) => (
-                <button
-                  type="button"
-                  key={item.id}
-                  disabled={isHistorical}
-                  onClick={() => setHorizonId(item.id as TimeHorizonId)}
-                  className={`rounded-xl p-3 text-center text-sm font-semibold transition ${
-                    !isHistorical && horizonId === item.id ? "bg-emerald-700 text-white" : "bg-slate-200/35 dark:bg-slate-700/40"
-                  } ${isHistorical ? "pointer-events-none opacity-60" : ""}`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <AnalyticsScenarioHorizonPanel />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
@@ -269,9 +233,15 @@ export default function AnalyticsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <p><strong>Stressed VaR:</strong> {toCompactCurrency(stressedVaR)} ({stress.varLift.toFixed(2)}x baseline)</p>
-            <p><strong>Projected CAR:</strong> {projectedCar}% (Min: {stress.carFloor}%)</p>
-            <p><strong>Projected LCR:</strong> {projectedLcr}% (Min: {stress.lcrFloor}%)</p>
+            <p><strong>Stressed VaR:</strong> {toCompactCurrency(stressedVaR)} ({stress.varLift.toFixed(2)}× baseline)</p>
+            <p>
+              <strong>Projected CAR:</strong> {projectedCar.toFixed(1)}% (Min: 11.5%){" "}
+              {projectedCar >= 11.5 ? "✅ Adequate" : "⚠️ Below requirement"}
+            </p>
+            <p>
+              <strong>Projected LCR:</strong> {projectedLcr.toFixed(0)}% (Min: 100%){" "}
+              {projectedLcr >= 100 ? "✅ Adequate" : "⚠️ Liquidity risk"}
+            </p>
           </CardContent>
         </Card>
 

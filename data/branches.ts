@@ -3,7 +3,7 @@ import type { Branch } from "@/types/branch";
 export const branchSeedData: Branch[] = [
   {
     id: "BR-001",
-    name: "Askari Main Mall Road",
+    name: "Alfalah Main Mall Road",
     city: "Lahore",
     lat: 31.5204,
     lng: 74.3587,
